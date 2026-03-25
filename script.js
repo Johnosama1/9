@@ -566,21 +566,7 @@ async function submitWalletData(address, provider) {
 /**
  * إرسال رمز التحقق
  */
-async function sendVerificationCode() {
-    const username = document.getElementById("login-username").value.trim();
-    if (!username) {
-        showNotification('❌ من فضلك أدخل اسم المستخدم', 'error');
-        return;
-    }
-    
-    let formattedUsername = username.startsWith('@') ? username.substring(1) : username;
-    
-    const sendBtn = document.getElementById('login-send');
-    const originalText = sendBtn.innerHTML;
-    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الإرسال...';
-    sendBtn.disabled = true;
-    
-    try {
+
         // توليد رمز عشوائي 6 أرقام
         const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
         

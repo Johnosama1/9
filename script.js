@@ -1,6 +1,6 @@
 /* ============================================================
-   starGo - Full JavaScript File (Fixed TON Connect)
-   Version: 6.0 (Using TonConnect UI)
+   starGo - Final Fixed Version
+   TON Connect UI - Working Transaction
 ============================================================ */
 
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
@@ -8,7 +8,6 @@ const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
 window.tonPrice = null;
 const FIXED_FEE = 0.20;
 let tonConnectUI = null;
-let isConnecting = false;
 
 /* ============================================================
    Helper Functions
@@ -33,9 +32,7 @@ function getFormattedDate() {
 
 function showNotification(message, type = 'success') {
     const oldNotification = document.querySelector('.notification');
-    if (oldNotification) {
-        oldNotification.remove();
-    }
+    if (oldNotification) oldNotification.remove();
     
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
@@ -50,101 +47,50 @@ function showNotification(message, type = 'success') {
     
     setTimeout(() => {
         notification.style.animation = 'slideUp 0.3s ease';
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.remove();
-            }
-        }, 300);
+        setTimeout(() => notification.remove(), 300);
     }, 3000);
 }
 
 /* ============================================================
-   TON Connect UI Initialization
+   TON Connect UI - Initialization
 ============================================================ */
 
 function initTonConnect() {
-    console.log('🔄 Initializing TON Connect UI...');
+    console.log('🔄 Initializing TON Connect...');
     
-    // التحقق من وجود المكتبة
     if (typeof window.TON_CONNECT_UI === 'undefined') {
-        console.warn('❌ TON_CONNECT_UI not found, retrying in 1s...');
-        showNotification('🔄 جاري تحميل مكتبة TON Connect...', 'warning');
+        console.warn('TON Connect UI not loaded, retrying...');
         setTimeout(initTonConnect, 1000);
         return;
     }
     
     try {
-        // ✅ استخدام TON_CONNECT_UI
-        const manifestUrl = window.location.origin + '/tonconnect-manifest.json';
-        console.log('🔗 Manifest URL:', manifestUrl);
+        // ✅ استخدام الرابط الصحيح
+        const manifestUrl = 'https://' + window.location.hostname + '/tonconnect-manifest.json';
+        console.log('🔗 Manifest:', manifestUrl);
         
         tonConnectUI = new window.TON_CONNECT_UI.TonConnectUI({
-            manifestUrl: manifestUrl,
-            buttonRootId: null // مش هنستخدم الزر الافتراضي
+            manifestUrl: manifestUrl
         });
         
-        console.log('✅ TonConnectUI initialized:', tonConnectUI);
+        console.log('✅ TON Connect initialized');
         
-        // الاستماع لتغييرات الحالة
+        // الاستماع للتغييرات
         tonConnectUI.onStatusChange((wallet) => {
-            handleWalletStatusChange(wallet);
+            if (wallet) {
+                console.log('✅ Wallet connected:', wallet.account.address);
+                updateWalletUI(wallet);
+                showNotification('✅ تم ربط المحفظة بنجاح', 'success');
+            } else {
+                console.log('❌ Wallet disconnected');
+                document.getElementById('walletInfo').style.display = 'none';
+                document.getElementById('connectTonWalletBtn').style.display = 'block';
+            }
         });
-        
-        // التحقق من اتصال سابق
-        setTimeout(() => {
-            checkExistingConnection();
-        }, 500);
-        
-        showNotification('✅ جاهز لربط المحفظة', 'success');
         
     } catch (e) {
-        console.error('❌ Error initializing TonConnectUI:', e);
-        showNotification('❌ خطأ في تهيئة TON Connect: ' + e.message, 'error');
-    }
-}
-
-function handleWalletStatusChange(wallet) {
-    if (wallet) {
-        console.log('✅ Wallet connected:', wallet);
-        updateWalletUI(wallet);
-        showNotification(`✅ تم ربط محفظة ${wallet.device?.appName || 'TON'} بنجاح`, 'success');
-        
-        // حفظ في localStorage
-        const walletInfo = {
-            address: wallet.account.address,
-            provider: wallet.device?.appName || 'tonconnect',
-            connectedAt: getFormattedDate()
-        };
-        localStorage.setItem('connected_wallet', JSON.stringify(walletInfo));
-        
-    } else {
-        console.log('❌ Wallet disconnected');
-        document.getElementById('walletInfo').style.display = 'none';
-        document.getElementById('connectTonWalletBtn').innerHTML = '<i class="fas fa-wallet"></i> ربط محفظة TON';
-        document.getElementById('walletAddress').value = '';
-        document.getElementById('walletProvider').value = '';
-        
-        localStorage.removeItem('connected_wallet');
-    }
-}
-
-async function checkExistingConnection() {
-    try {
-        if (!tonConnectUI) return;
-        
-        const wallet = tonConnectUI.wallet;
-        if (wallet) {
-            console.log('✅ Found existing wallet:', wallet);
-            updateWalletUI(wallet);
-        } else {
-            // محاولة الاستعادة من localStorage
-            const savedWallet = localStorage.getItem('connected_wallet');
-            if (savedWallet) {
-                console.log('📦 Found saved wallet in localStorage');
-            }
-        }
-    } catch (error) {
-        console.error('Error checking connection:', error);
+        console.error('❌ Error:', e);
+        showNotification('❌ خطأ في تهيئة TON Connect', 'error');
     }
 }
 
@@ -154,39 +100,28 @@ function updateWalletUI(wallet) {
     document.getElementById('walletAddress').value = wallet.account.address;
     document.getElementById('walletProvider').value = wallet.device?.appName || 'tonconnect';
     
-    const shortAddress = wallet.account.address.substring(0, 8) + '...' + 
-                        wallet.account.address.substring(wallet.account.address.length - 8);
-    document.getElementById('connectedAddress').textContent = shortAddress;
+    const short = wallet.account.address.substring(0, 6) + '...' + 
+                  wallet.account.address.substring(wallet.account.address.length - 4);
+    document.getElementById('connectedAddress').textContent = short;
     
     document.getElementById('walletInfo').style.display = 'block';
-    document.getElementById('connectTonWalletBtn').innerHTML = '<i class="fas fa-check-circle"></i> المحفظة مربوطة';
+    document.getElementById('connectTonWalletBtn').style.display = 'none';
     
-    getWalletBalance(wallet.account.address);
+    // جلب الرصيد
+    fetchWalletBalance(wallet.account.address);
 }
 
-async function getWalletBalance(address) {
+async function fetchWalletBalance(address) {
     try {
-        const controllers = [
-            `https://toncenter.com/api/v2/getAddressBalance?address=${address}`,
-            `https://testnet.toncenter.com/api/v2/getAddressBalance?address=${address}`
-        ];
-        
-        for (const url of controllers) {
-            try {
-                const response = await fetch(url);
-                const data = await response.json();
-                if (data.ok) {
-                    const balance = data.result / 1e9;
-                    document.getElementById('balanceAmount').textContent = balance.toFixed(2);
-                    document.getElementById('walletBalance').style.display = 'flex';
-                    break;
-                }
-            } catch (e) {
-                console.warn(`Failed to fetch from ${url}:`, e);
-            }
+        const res = await fetch(`https://toncenter.com/api/v2/getAddressBalance?address=${address}`);
+        const data = await res.json();
+        if (data.ok) {
+            const balance = (data.result / 1e9).toFixed(2);
+            document.getElementById('balanceAmount').textContent = balance;
+            document.getElementById('walletBalance').style.display = 'flex';
         }
-    } catch (error) {
-        console.error('Error getting balance:', error);
+    } catch (e) {
+        console.warn('Could not fetch balance:', e);
     }
 }
 
@@ -195,75 +130,43 @@ async function getWalletBalance(address) {
 ============================================================ */
 
 async function connectTonWallet() {
-    console.log('🔘 Connect wallet button clicked');
+    console.log('🔘 Connect clicked');
     
     if (!tonConnectUI) {
-        showNotification('🔄 جاري تهيئة TON Connect...', 'warning');
-        initTonConnect();
-        setTimeout(connectTonWallet, 1500);
-        return;
-    }
-    
-    if (isConnecting) {
-        showNotification('🔄 جاري الاتصال بالفعل...', 'warning');
+        showNotification('🔄 جاري التحميل...', 'warning');
         return;
     }
     
     try {
-        isConnecting = true;
-        closeSidebar();
-        
-        showNotification('🔄 جاري فتح نافذة المحفظة...', 'success');
-        console.log('📤 Opening connect modal...');
-        
-        // ✅ فتح نافذة الاتصال
         await tonConnectUI.openModal();
-        
-        console.log('✅ Modal opened successfully');
-        
-    } catch (error) {
-        console.error('❌ Error opening wallet:', error);
-        
-        let errorMessage = 'فشل فتح المحفظة';
-        if (error.message && error.message.includes('closed')) {
-            errorMessage = 'تم إغلاق نافذة المحفظة';
-        } else if (error.message && error.message.includes('manifest')) {
-            errorMessage = 'مشكلة في ملف manifest.json';
-        }
-        
-        showNotification(`❌ ${errorMessage}`, 'error');
-    } finally {
-        isConnecting = false;
+    } catch (e) {
+        console.error('❌ Error opening modal:', e);
+        showNotification('❌ فشل فتح المحفظة', 'error');
     }
 }
 
 async function disconnectWallet() {
-    if (!tonConnectUI) {
-        showNotification('❌ لا يوجد اتصال', 'error');
-        return;
-    }
+    if (!tonConnectUI) return;
     
     try {
         await tonConnectUI.disconnect();
         showNotification('✅ تم قطع الاتصال', 'success');
-    } catch (error) {
-        console.error('Error disconnecting:', error);
-        showNotification('❌ فشل قطع الاتصال', 'error');
+    } catch (e) {
+        console.error('Error:', e);
     }
 }
 
 function checkWalletBeforePurchase() {
-    const walletInfo = document.getElementById('walletInfo');
     const walletAddress = document.getElementById('walletAddress').value;
+    const walletInfo = document.getElementById('walletInfo');
     
-    if (!walletInfo || walletInfo.style.display !== 'block' || !walletAddress) {
-        showNotification('⚠️ يجب ربط المحفظة أولاً قبل الشراء', 'warning');
+    if (!walletAddress || walletInfo.style.display === 'none') {
+        showNotification('⚠️ يجب ربط المحفظة أولاً', 'warning');
         
-        const sidebar = document.getElementById("sidebar");
-        const overlay = document.getElementById("overlay");
-        sidebar.classList.add("open");
-        overlay.style.display = "block";
+        document.getElementById('sidebar').classList.add('open');
+        document.getElementById('overlay').style.display = 'block';
         
+        setTimeout(() => connectTonWallet(), 500);
         return false;
     }
     return true;
@@ -276,137 +179,154 @@ function checkWalletBeforePurchase() {
 function toggleSidebar() {
     const sb = document.getElementById("sidebar");
     const ov = document.getElementById("overlay");
+    
     if (sb.classList.contains("open")) {
         sb.classList.remove("open");
         ov.style.display = "none";
-        document.body.style.overflow = '';
     } else {
         sb.classList.add("open");
         ov.style.display = "block";
-        document.body.style.overflow = 'hidden';
     }
 }
 
 function closeSidebar() {
-    const sb = document.getElementById("sidebar");
-    const ov = document.getElementById("overlay");
-    sb.classList.remove("open");
-    ov.style.display = "none";
-    document.body.style.overflow = '';
+    document.getElementById("sidebar").classList.remove("open");
+    document.getElementById("overlay").style.display = "none";
+}
+
+function switchTab(tab) {
+    document.querySelectorAll(".tab-btn").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".content-box").forEach(c => c.style.display = "none");
+    
+    if (tab === 'stars') {
+        document.querySelectorAll(".tab-btn")[0].classList.add("active");
+        document.getElementById("stars-content").style.display = "block";
+    } else {
+        document.querySelectorAll(".tab-btn")[1].classList.add("active");
+        document.getElementById("premium-content").style.display = "block";
+    }
 }
 
 /* ============================================================
-   Prices and Packages
+   User & Package Selection
 ============================================================ */
 
-function setupPackageClick() {
-    document.querySelectorAll(".package").forEach(pkg => {
-        pkg.addEventListener("click", () => {
-            document.querySelectorAll(".package").forEach(x => x.classList.remove("active-package"));
-            pkg.classList.add("active-package");
-            const radio = pkg.querySelector("input[type='radio']");
-            if (radio) radio.checked = true;
-            const amount = pkg.getAttribute("data-amount");
-            const starsInput = document.getElementById("stars-amount");
-            if (starsInput) starsInput.value = amount;
-            calculateCustomAmount();
-            const calc = document.getElementById("calc-result");
-            if (calc) calc.scrollIntoView({ behavior: "smooth", block: "center" });
-        });
-    });
+function checkUser() {
+    let user = document.getElementById("username-input").value.trim();
+    if (!user) return showNotification("ادخل يوزر التليجرام", 'error');
+    if (!user.startsWith("@")) user = "@" + user;
+    
+    document.getElementById("user-name").innerText = user;
+    document.getElementById("user-card").style.display = "flex";
+    document.getElementById("user-input-container").style.display = "none";
 }
 
-function setupPremiumSelect() {
-    document.querySelectorAll(".plan").forEach(plan => {
-        plan.addEventListener("click", () => {
-            document.querySelectorAll(".plan").forEach(p => p.classList.remove("active-plan"));
-            plan.classList.add("active-plan");
-            const input = plan.querySelector("input");
-            if (input) input.checked = true;
-        });
-    });
+function removeUser() {
+    document.getElementById("user-card").style.display = "none";
+    document.getElementById("user-input-container").style.display = "flex";
+    document.getElementById("username-input").value = "";
 }
+
+function checkPremiumUser() {
+    let user = document.getElementById("premium-username-input").value.trim();
+    if (!user) return showNotification("ادخل يوزر التليجرام", 'error');
+    if (!user.startsWith("@")) user = "@" + user;
+    
+    document.getElementById("premium-user-name").innerText = user;
+    document.getElementById("premium-user-card").style.display = "flex";
+    document.getElementById("premium-user-input-container").style.display = "none";
+}
+
+function removePremiumUser() {
+    document.getElementById("premium-user-card").style.display = "none";
+    document.getElementById("premium-user-input-container").style.display = "flex";
+    document.getElementById("premium-username-input").value = "";
+}
+
+function selectPackage(amount, ton) {
+    document.querySelectorAll(".package").forEach(p => p.classList.remove("active-package"));
+    event.currentTarget.classList.add("active-package");
+    
+    document.getElementById("pack-" + amount).checked = true;
+    document.getElementById("stars-amount").value = amount;
+    calculateStars();
+}
+
+function selectPremiumPlan(ton, name) {
+    document.querySelectorAll(".plan").forEach(p => p.classList.remove("active-plan"));
+    event.currentTarget.classList.add("active-plan");
+    
+    const radio = event.currentTarget.querySelector("input");
+    if (radio) radio.checked = true;
+}
+
+/* ============================================================
+   Price Calculations
+============================================================ */
 
 async function fetchTonPrice() {
     try {
         const res = await fetch("https://api.coinbase.com/v2/exchange-rates?currency=TON");
-        const j = await res.json();
-        const rate = parseFloat(j.data.rates.USD);
-        let usdPerTon = rate;
-        if (rate < 0.001) usdPerTon = 1 / rate;
-        window.tonPrice = usdPerTon;
-        updatePackages();
-        updatePremiumPrices();
-        calculateCustomAmount();
+        const data = await res.json();
+        window.tonPrice = parseFloat(data.data.rates.USD);
+        updatePrices();
     } catch (e) {
-        console.error("TON price error", e);
+        console.error("Price fetch error:", e);
         window.tonPrice = 5.5;
-        updatePackages();
-        updatePremiumPrices();
-        calculateCustomAmount();
+        updatePrices();
     }
 }
 
-function updatePackages() {
+function updatePrices() {
     if (!window.tonPrice) return;
+    
+    // Update packages
     document.querySelectorAll(".package").forEach(pkg => {
         const ton = parseFloat(pkg.getAttribute("data-ton"));
-        const usd = ton * window.tonPrice;
-        const final = usd + FIXED_FEE;
+        const usd = (ton * window.tonPrice + FIXED_FEE).toFixed(2);
         const el = pkg.querySelector(".pack-usd");
-        if (el) el.innerText = "~ $" + final.toFixed(2);
+        if (el) el.innerText = "~ $" + usd;
     });
-}
-
-function updatePremiumPrices() {
-    if (!window.tonPrice) return;
+    
+    // Update premium
     document.querySelectorAll(".plan").forEach(plan => {
         const ton = parseFloat(plan.getAttribute("data-ton"));
-        const usd = ton * window.tonPrice;
-        const final = usd + FIXED_FEE;
-        const usdEl = plan.querySelector(".usd-value");
-        const tonEl = plan.querySelector(".ton-value");
-        if (usdEl) usdEl.innerText = "~ $" + final.toFixed(2);
-        if (tonEl) tonEl.innerText = "🔷 " + ton;
+        const usd = (ton * window.tonPrice + FIXED_FEE).toFixed(2);
+        const el = plan.querySelector(".usd-value");
+        if (el) el.innerText = "~ $" + usd;
     });
 }
 
-function calculateCustomAmount() {
-    const input = document.getElementById("stars-amount");
+function calculateStars() {
+    const amount = Number(document.getElementById("stars-amount").value);
     const out = document.getElementById("calc-result");
-    if (!input || !out) return;
-    const amount = Number(input.value);
-    if (!amount || amount < 50) {
+    
+    if (!amount || amount < 50 || !window.tonPrice) {
         out.innerHTML = "";
         return;
     }
-    if (!window.tonPrice) {
-        out.innerHTML = "";
-        return;
-    }
+    
     const TON_PER_STAR = 0.0099273;
-    const tonNeeded = amount * TON_PER_STAR;
-    const usd = tonNeeded * window.tonPrice;
-    const final = usd + FIXED_FEE;
-    out.innerHTML = ` <b style="color:#4dd0ff">$${final.toFixed(2)}</b> for <b>${amount} ⭐</b>`;
+    const ton = amount * TON_PER_STAR;
+    const usd = (ton * window.tonPrice + FIXED_FEE).toFixed(2);
+    
+    out.innerHTML = `<b style="color:#4dd0ff">$${usd}</b> for <b>${amount} ⭐</b>`;
 }
 
 /* ============================================================
-   Purchase Handlers - Fixed
+   PURCHASE - FIXED VERSION
 ============================================================ */
 
-async function handleStarsPurchase() {
-    console.log('🛒 Stars purchase clicked');
+async function buyStars() {
+    console.log('🛒 Buying stars...');
     
-    if (!checkWalletBeforePurchase()) {
-        return;
-    }
+    if (!checkWalletBeforePurchase()) return;
     
     const username = document.getElementById("user-name").innerText || document.getElementById("username-input").value.trim();
     const amount = document.getElementById("stars-amount").value;
     
     if (!username) {
-        showNotification('❌ من فضلك أدخل اسم المستخدم', 'error');
+        showNotification('❌ أدخل اسم المستخدم', 'error');
         return;
     }
     
@@ -415,134 +335,98 @@ async function handleStarsPurchase() {
         return;
     }
     
+    // ✅ التحقق من الاتصال
+    if (!tonConnectUI || !tonConnectUI.wallet) {
+        showNotification('❌ المحفظة غير متصلة', 'error');
+        connectTonWallet();
+        return;
+    }
+    
     const TON_PER_STAR = 0.0099273;
     const tonAmount = (amount * TON_PER_STAR).toFixed(4);
-    const orderId = "ORD-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7).toUpperCase();
     
-    // ✅ التحقق من tonConnectUI
-    if (!tonConnectUI) {
-        showNotification('❌ TON Connect غير مهيئ. جاري إعادة التهيئة...', 'warning');
-        initTonConnect();
-        return;
-    }
-    
-    // ✅ التحقق من الاتصال
-    if (!tonConnectUI.wallet) {
-        showNotification('❌ المحفظة غير متصلة. جاري فتح نافذة الاتصال...', 'warning');
-        try {
-            await tonConnectUI.openModal();
-        } catch (e) {
-            showNotification('❌ فشل فتح نافذة المحفظة', 'error');
-        }
-        return;
-    }
-    
-    showNotification(`🔄 جاري إرسال ${amount} نجمة...`, 'success');
+    showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
     
     try {
-        const payload = base64Encode(`STARS_PURCHASE:${username}:${amount}:${orderId}:${Date.now()}`);
-        
-        console.log('📤 Sending transaction:', {
-            validUntil: Math.floor(Date.now() / 1000) + 10 * 60,
-            messages: [{
-                address: RECEIVER_WALLET,
-                amount: toNano(tonAmount),
-                payload: payload
-            }]
-        });
-        
-        // ✅ إرسال المعاملة
+        // ✅ الطريقة الصحيحة لـ TON Connect UI
         const result = await tonConnectUI.sendTransaction({
-            validUntil: Math.floor(Date.now() / 1000) + 10 * 60,
-            messages: [{
-                address: RECEIVER_WALLET,
-                amount: toNano(tonAmount),
-                payload: payload
-            }]
+            validUntil: Math.floor(Date.now() / 1000) + 600, // 10 دقايق
+            messages: [
+                {
+                    address: RECEIVER_WALLET,
+                    amount: toNano(tonAmount)
+                    // ❌ مفيش payload عشان ميسببش مشاكل
+                }
+            ]
         });
         
-        console.log('✅ Transaction result:', result);
-        showNotification(`✅ تم إرسال ${amount} نجمة بنجاح!`, 'success');
+        console.log('✅ Success:', result);
+        showNotification(`✅ تم شراء ${amount} نجمة بنجاح!`, 'success');
         
+        // حفظ الطلب
         saveOrder({
             type: 'stars',
             username: username,
             amount: amount,
             tonAmount: tonAmount,
-            orderId: orderId,
-            status: 'completed',
             date: getFormattedDate(),
-            transaction: result
+            boc: result.boc
         });
         
     } catch (error) {
-        console.error('❌ Transaction error:', error);
+        console.error('❌ Transaction failed:', error);
         
-        if (error.message && (error.message.includes('cancelled') || error.message.includes('rejected'))) {
-            showNotification('❌ تم إلغاء المعاملة من قبل المستخدم', 'error');
-        } else if (error.message && error.message.includes('timeout')) {
-            showNotification('❌ انتهت مهلة المعاملة', 'error');
+        if (error.message?.includes('cancelled') || error.message?.includes('rejected')) {
+            showNotification('❌ تم إلغاء المعاملة', 'error');
+        } else if (error.message?.includes('timeout')) {
+            showNotification('❌ انتهت المهلة', 'error');
         } else {
-            showNotification('❌ فشل إتمام المعاملة', 'error');
+            showNotification('❌ فشل المعاملة: ' + (error.message || 'خطأ غير معروف'), 'error');
         }
     }
 }
 
-async function handlePremiumPurchase() {
-    console.log('🛒 Premium purchase clicked');
+async function buyPremium() {
+    console.log('🛒 Buying premium...');
     
-    if (!checkWalletBeforePurchase()) {
-        return;
-    }
+    if (!checkWalletBeforePurchase()) return;
     
     const username = document.getElementById("premium-user-name").innerText || document.getElementById("premium-username-input").value.trim();
     const selectedPlan = document.querySelector('.plan.active-plan');
     
     if (!username) {
-        showNotification('❌ من فضلك أدخل اسم المستخدم', 'error');
+        showNotification('❌ أدخل اسم المستخدم', 'error');
         return;
     }
     
     if (!selectedPlan) {
-        showNotification('❌ من فضلك اختر المدة', 'error');
+        showNotification('❌ اختر المدة', 'error');
+        return;
+    }
+    
+    if (!tonConnectUI || !tonConnectUI.wallet) {
+        showNotification('❌ المحفظة غير متصلة', 'error');
+        connectTonWallet();
         return;
     }
     
     const tonAmount = selectedPlan.getAttribute('data-ton');
     const planName = selectedPlan.querySelector('span').innerText;
-    const orderId = "PRM-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7).toUpperCase();
     
-    if (!tonConnectUI) {
-        showNotification('❌ TON Connect غير مهيئ. جاري إعادة التهيئة...', 'warning');
-        initTonConnect();
-        return;
-    }
-    
-    if (!tonConnectUI.wallet) {
-        showNotification('❌ المحفظة غير متصلة. جاري فتح نافذة الاتصال...', 'warning');
-        try {
-            await tonConnectUI.openModal();
-        } catch (e) {
-            showNotification('❌ فشل فتح نافذة المحفظة', 'error');
-        }
-        return;
-    }
-    
-    showNotification(`🔄 جاري إرسال طلب ${planName}...`, 'success');
+    showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
     
     try {
-        const payload = base64Encode(`PREMIUM_PURCHASE:${username}:${planName}:${orderId}:${Date.now()}`);
-        
         const result = await tonConnectUI.sendTransaction({
-            validUntil: Math.floor(Date.now() / 1000) + 10 * 60,
-            messages: [{
-                address: RECEIVER_WALLET,
-                amount: toNano(tonAmount),
-                payload: payload
-            }]
+            validUntil: Math.floor(Date.now() / 1000) + 600,
+            messages: [
+                {
+                    address: RECEIVER_WALLET,
+                    amount: toNano(tonAmount)
+                }
+            ]
         });
         
-        console.log('✅ Transaction result:', result);
+        console.log('✅ Success:', result);
         showNotification(`✅ تم شراء ${planName} بنجاح!`, 'success');
         
         saveOrder({
@@ -550,21 +434,17 @@ async function handlePremiumPurchase() {
             username: username,
             plan: planName,
             tonAmount: tonAmount,
-            orderId: orderId,
-            status: 'completed',
             date: getFormattedDate(),
-            transaction: result
+            boc: result.boc
         });
         
     } catch (error) {
-        console.error('❌ Transaction error:', error);
+        console.error('❌ Transaction failed:', error);
         
-        if (error.message && (error.message.includes('cancelled') || error.message.includes('rejected'))) {
-            showNotification('❌ تم إلغاء المعاملة من قبل المستخدم', 'error');
-        } else if (error.message && error.message.includes('timeout')) {
-            showNotification('❌ انتهت مهلة المعاملة', 'error');
+        if (error.message?.includes('cancelled') || error.message?.includes('rejected')) {
+            showNotification('❌ تم إلغاء المعاملة', 'error');
         } else {
-            showNotification('❌ فشل إتمام المعاملة', 'error');
+            showNotification('❌ فشل المعاملة', 'error');
         }
     }
 }
@@ -576,288 +456,20 @@ function saveOrder(order) {
         localStorage.setItem('orders', JSON.stringify(orders));
         console.log('✅ Order saved:', order);
     } catch (e) {
-        console.error('Error saving order:', e);
+        console.error('Save error:', e);
     }
 }
 
 /* ============================================================
-   Mobile Enhancements
-============================================================ */
-
-function detectDeviceType() {
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const isTablet = /iPad|Android(?!.*Mobile)/i.test(navigator.userAgent);
-    
-    if (isMobile) {
-        document.body.classList.add('is-mobile');
-    } else if (isTablet) {
-        document.body.classList.add('is-tablet');
-    } else {
-        document.body.classList.add('is-desktop');
-    }
-    
-    if ('ontouchstart' in window) {
-        document.body.classList.add('touch-device');
-    }
-}
-
-function setVHVariable() {
-    let vh = window.innerHeight * 0.01;
-    document.documentElement.style.setProperty('--vh', `${vh}px`);
-}
-
-function setupMobileGestures() {
-    let touchStartX = 0;
-    let touchEndX = 0;
-    
-    document.addEventListener('touchstart', (e) => {
-        touchStartX = e.changedTouches[0].screenX;
-    }, false);
-    
-    document.addEventListener('touchend', (e) => {
-        touchEndX = e.changedTouches[0].screenX;
-        handleSwipe();
-    }, false);
-    
-    function handleSwipe() {
-        const sidebar = document.getElementById('sidebar');
-        if (!sidebar.classList.contains('open')) return;
-        
-        if (touchEndX - touchStartX > 50) {
-            closeSidebar();
-        }
-    }
-}
-
-function enhanceMobileForms() {
-    const inputs = document.querySelectorAll('input[type="text"], input[type="number"], input[type="tel"]');
-    inputs.forEach(input => {
-        input.addEventListener('focus', () => {
-            document.body.classList.add('input-focused');
-        });
-        
-        input.addEventListener('blur', () => {
-            document.body.classList.remove('input-focused');
-        });
-    });
-}
-
-function enhanceMobileDropdowns() {
-    const modal = document.getElementById('wallet-modal');
-    if (modal) {
-        modal.addEventListener('touchmove', (e) => {
-            e.stopPropagation();
-        }, { passive: false });
-    }
-}
-
-function addSidebarBackButton() {
-    const sidebar = document.getElementById('sidebar');
-    
-    const oldBtn = document.querySelector('.sidebar-close-btn');
-    if (oldBtn) oldBtn.remove();
-    
-    if (window.innerWidth <= 768) {
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'sidebar-close-btn';
-        closeBtn.innerHTML = '<i class="fas fa-arrow-right"></i>';
-        closeBtn.onclick = closeSidebar;
-        closeBtn.setAttribute('aria-label', 'إغلاق القائمة');
-        
-        sidebar.insertBefore(closeBtn, sidebar.firstChild);
-    }
-}
-
-function enhanceMobileClicks() {
-    document.querySelectorAll('button, .package, .plan, .wallet-item').forEach(el => {
-        el.addEventListener('touchstart', () => {
-            el.classList.add('touch-active');
-        }, { passive: true });
-        
-        el.addEventListener('touchend', () => {
-            setTimeout(() => {
-                el.classList.remove('touch-active');
-            }, 150);
-        }, { passive: true });
-        
-        el.addEventListener('touchcancel', () => {
-            el.classList.remove('touch-active');
-        }, { passive: true });
-    });
-}
-
-function enhanceScrolling() {
-    const scrollableElements = document.querySelectorAll('#sidebar, .wallet-modal-body, .packages-container');
-    
-    scrollableElements.forEach(el => {
-        el.addEventListener('touchmove', (e) => {
-            e.stopPropagation();
-        }, { passive: true });
-    });
-}
-
-function checkOnlineStatus() {
-    window.addEventListener('online', () => {
-        showNotification('✅ تم استعادة الاتصال بالإنترنت', 'success');
-    });
-    
-    window.addEventListener('offline', () => {
-        showNotification('❌ لا يوجد اتصال بالإنترنت', 'error');
-    });
-}
-
-function enableOfflineSupport() {
-    window.saveOrderOffline = function(order) {
-        try {
-            const orders = JSON.parse(localStorage.getItem('offline_orders') || '[]');
-            orders.push({
-                ...order,
-                offline: true,
-                savedAt: getFormattedDate()
-            });
-            localStorage.setItem('offline_orders', JSON.stringify(orders));
-            showNotification('✅ تم حفظ الطلب محلياً', 'success');
-        } catch (e) {
-            console.error('Error saving offline order:', e);
-        }
-    };
-}
-
-function initMobileEnhancements() {
-    detectDeviceType();
-    setVHVariable();
-    setupMobileGestures();
-    enhanceMobileForms();
-    enhanceMobileDropdowns();
-    addSidebarBackButton();
-    enhanceMobileClicks();
-    enhanceScrolling();
-    checkOnlineStatus();
-    enableOfflineSupport();
-    
-    window.addEventListener('resize', () => {
-        setVHVariable();
-        addSidebarBackButton();
-    });
-    
-    window.addEventListener('orientationchange', () => {
-        setTimeout(setVHVariable, 100);
-        setTimeout(addSidebarBackButton, 100);
-    });
-}
-
-/* ============================================================
-   Event Listeners
+   Initialization
 ============================================================ */
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('✅ DOM loaded, initializing...');
+    console.log('✅ Page loaded');
     
     fetchTonPrice();
     setInterval(fetchTonPrice, 30000);
-    setupPackageClick();
-    setupPremiumSelect();
     
-    // ✅ تأخير تهيئة TON Connect عشان المكتبة تحمل
-    setTimeout(() => {
-        initTonConnect();
-    }, 2000);
-    
-    initMobileEnhancements();
-    
-    document.querySelectorAll(".tab-btn").forEach((tab, i) => {
-        tab.addEventListener("click", () => {
-            document.querySelectorAll(".tab-btn").forEach(t => t.classList.remove("active"));
-            document.querySelectorAll(".content-box").forEach(c => c.style.display = "none");
-            tab.classList.add("active");
-            const boxes = document.querySelectorAll(".content-box");
-            if (boxes[i]) boxes[i].style.display = "block";
-        });
-    });
-    
-    const usernameSubmit = document.getElementById("username-submit");
-    if (usernameSubmit) {
-        usernameSubmit.addEventListener("click", async () => {
-            let user = document.getElementById("username-input").value.trim();
-            if (!user) return showNotification("ادخل يوزر التليجرام", 'error');
-            if (!user.startsWith("@")) user = "@" + user;
-            
-            const userNameEl = document.getElementById("user-name");
-            if (userNameEl) userNameEl.innerText = user;
-            
-            const card = document.getElementById("user-card");
-            const inputContainer = document.getElementById("user-input-container");
-            if (card) card.style.display = "flex";
-            if (inputContainer) inputContainer.style.display = "none";
-        });
-    }
-    
-    const removeUserBtn = document.getElementById("remove-user");
-    if (removeUserBtn) {
-        removeUserBtn.addEventListener("click", () => {
-            const card = document.getElementById("user-card");
-            const inputContainer = document.getElementById("user-input-container");
-            if (card) card.style.display = "none";
-            if (inputContainer) inputContainer.style.display = "flex";
-            const inp = document.getElementById("username-input");
-            if (inp) inp.value = "";
-        });
-    }
-    
-    const starsAmountInput = document.getElementById("stars-amount");
-    if (starsAmountInput) starsAmountInput.addEventListener("input", calculateCustomAmount);
-    
-    const starsContinueBtn = document.getElementById('stars-continue-btn');
-    if (starsContinueBtn) {
-        starsContinueBtn.addEventListener("click", handleStarsPurchase);
-    }
-    
-    const premiumContinueBtn = document.getElementById('premium-continue-btn');
-    if (premiumContinueBtn) {
-        premiumContinueBtn.addEventListener("click", handlePremiumPurchase);
-    }
-    
-    const premiumSubmit = document.getElementById("premium-username-submit");
-    if (premiumSubmit) {
-        premiumSubmit.addEventListener("click", async () => {
-            let user = document.getElementById("premium-username-input").value.trim();
-            if (!user) return showNotification("ادخل يوزر التليجرام", 'error');
-            if (!user.startsWith("@")) user = "@" + user;
-            
-            const nameEl = document.getElementById("premium-user-name");
-            if (nameEl) nameEl.innerText = user;
-            
-            const card = document.getElementById("premium-user-card");
-            const inputContainer = document.getElementById("premium-user-input-container");
-            if (card) card.style.display = "flex";
-            if (inputContainer) inputContainer.style.display = "none";
-        });
-    }
-    
-    const premiumRemove = document.getElementById("premium-remove-user");
-    if (premiumRemove) {
-        premiumRemove.addEventListener("click", () => {
-            const card = document.getElementById("premium-user-card");
-            const inputContainer = document.getElementById("premium-user-input-container");
-            if (card) card.style.display = "none";
-            if (inputContainer) inputContainer.style.display = "flex";
-            const inp = document.getElementById("premium-username-input");
-            if (inp) inp.value = "";
-        });
-    }
-    
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            closeSidebar();
-        }
-    });
+    // تأخير تهيئة TON Connect
+    setTimeout(initTonConnect, 1500);
 });
-
-/* ============================================================
-   Export functions for global use
-============================================================ */
-
-window.connectTonWallet = connectTonWallet;
-window.disconnectWallet = disconnectWallet;
-window.toggleSidebar = toggleSidebar;
-window.closeSidebar = closeSidebar;

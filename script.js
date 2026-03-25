@@ -1,55 +1,18 @@
 /* ============================================================
-   starGo - Full JavaScript File (No Login) - Part 1
-   Version: 5.0 (Fixed Transaction)
+   starGo - Full JavaScript File (Fixed TON Connect)
+   Version: 6.0 (Using TonConnect UI)
 ============================================================ */
 
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
 
-const SUPPORTED_WALLETS = [
-    {
-        name: "Tonkeeper",
-        appName: "tonkeeper",
-        imageUrl: "https://tonkeeper.com/assets/tonkeeper-icon.png",
-        aboutUrl: "https://tonkeeper.com",
-        bridgeUrl: "https://bridge.tonapi.io/bridge",
-        platforms: ["ios", "android", "chrome"],
-        universalUrl: "https://app.tonkeeper.com/ton-connect"
-    },
-    {
-        name: "Tonhub",
-        appName: "tonhub",
-        imageUrl: "https://tonhub.com/tonhub-icon.png",
-        aboutUrl: "https://tonhub.com",
-        bridgeUrl: "https://connect.tonhubapi.com/tonconnect",
-        platforms: ["ios", "android"],
-        universalUrl: "https://tonhub.com/ton-connect"
-    },
-    {
-        name: "OpenMask",
-        appName: "openmask",
-        imageUrl: "https://raw.githubusercontent.com/OpenMask/awesome-openmask/main/logo.svg",
-        aboutUrl: "https://www.openmask.app/",
-        bridgeUrl: "https://bridge.openmask.app/bridge",
-        platforms: ["chrome"],
-        universalUrl: "https://www.openmask.app/",
-        injected: true
-    },
-    {
-        name: "TonWallet",
-        appName: "tonwallet",
-        imageUrl: "https://wallet.ton.org/assets/logo.png",
-        aboutUrl: "https://wallet.ton.org",
-        bridgeUrl: "https://bridge.ton.org/bridge",
-        platforms: ["ios", "android", "chrome", "firefox"],
-        universalUrl: "https://wallet.ton.org/ton-connect"
-    }
-];
-
 window.tonPrice = null;
 const FIXED_FEE = 0.20;
-let selectedWallet = null;
-let tonConnect = null;
+let tonConnectUI = null;
 let isConnecting = false;
+
+/* ============================================================
+   Helper Functions
+============================================================ */
 
 function toNano(tonAmount) {
     return String(Math.floor(Number(tonAmount) * 1e9));
@@ -95,93 +58,48 @@ function showNotification(message, type = 'success') {
     }, 3000);
 }
 
-function createManifest() {
-    const manifest = {
-        url: window.location.origin,
-        name: "starGo",
-        iconUrl: window.location.origin + "/jimage.jpg",
-        termsOfUseUrl: window.location.origin + "/terms.html",
-        privacyPolicyUrl: window.location.origin + "/privacy.html"
-    };
-    
-    sessionStorage.setItem('tonconnect-manifest', JSON.stringify(manifest));
-    return manifest;
-}
+/* ============================================================
+   TON Connect UI Initialization
+============================================================ */
 
 function initTonConnect() {
-    try {
-        if (typeof window.TonConnect === 'undefined') {
-            console.warn('TonConnect SDK not loaded, attempting to load...');
-            showNotification('🔄 جاري تحميل مكتبة TON Connect...', 'warning');
-            
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/@tonconnect/sdk@latest/dist/tonconnect-sdk.min.js';
-            script.onload = function() {
-                console.log('✅ TonConnect SDK loaded successfully');
-                showNotification('✅ تم تحميل مكتبة TON Connect', 'success');
-                initializeTonConnectWithManifest();
-            };
-            script.onerror = function() {
-                console.error('❌ Failed to load TonConnect SDK');
-                showNotification('❌ فشل تحميل مكتبة TON Connect', 'error');
-            };
-            document.head.appendChild(script);
-        } else {
-            console.log('✅ TonConnect SDK already loaded');
-            initializeTonConnectWithManifest();
-        }
-    } catch (e) {
-        console.error('❌ Error initializing TonConnect:', e);
-        showNotification('❌ خطأ في تهيئة TON Connect', 'error');
+    console.log('🔄 Initializing TON Connect UI...');
+    
+    // التحقق من وجود المكتبة
+    if (typeof window.TON_CONNECT_UI === 'undefined') {
+        console.warn('❌ TON_CONNECT_UI not found, retrying in 1s...');
+        showNotification('🔄 جاري تحميل مكتبة TON Connect...', 'warning');
+        setTimeout(initTonConnect, 1000);
+        return;
     }
-}
-
-function initializeTonConnectWithManifest() {
-    try {
-        createManifest();
-        
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        
-        const manifestUrl = isLocalhost 
-            ? window.location.origin + '/tonconnect-manifest.json'
-            : 'https://' + window.location.hostname + '/tonconnect-manifest.json';
-        
-        tonConnect = new window.TonConnect.TonConnect({
-            manifestUrl: manifestUrl,
-            wallets: SUPPORTED_WALLETS
-        });
-        
-        console.log('✅ TonConnect initialized successfully', tonConnect);
-        
-        setTimeout(() => {
-            checkExistingConnection();
-        }, 1000);
-        
-        setupWalletStatusListener();
-        
-    } catch (e) {
-        console.error('❌ Error creating TonConnect instance:', e);
-        showNotification('❌ فشل إنشاء اتصال TON', 'error');
-    }
-}
-
-function setupWalletStatusListener() {
-    if (!tonConnect) return;
     
     try {
-        if (typeof tonConnect.onStatusChange === 'function') {
-            tonConnect.onStatusChange((wallet) => {
-                handleWalletStatusChange(wallet);
-            });
-        } else if (typeof tonConnect.subscribe === 'function') {
-            tonConnect.subscribe((wallet) => {
-                handleWalletStatusChange(wallet);
-            });
-        } else {
-            console.warn('No status change method available');
-        }
+        // ✅ استخدام TON_CONNECT_UI
+        const manifestUrl = window.location.origin + '/tonconnect-manifest.json';
+        console.log('🔗 Manifest URL:', manifestUrl);
+        
+        tonConnectUI = new window.TON_CONNECT_UI.TonConnectUI({
+            manifestUrl: manifestUrl,
+            buttonRootId: null // مش هنستخدم الزر الافتراضي
+        });
+        
+        console.log('✅ TonConnectUI initialized:', tonConnectUI);
+        
+        // الاستماع لتغييرات الحالة
+        tonConnectUI.onStatusChange((wallet) => {
+            handleWalletStatusChange(wallet);
+        });
+        
+        // التحقق من اتصال سابق
+        setTimeout(() => {
+            checkExistingConnection();
+        }, 500);
+        
+        showNotification('✅ جاهز لربط المحفظة', 'success');
+        
     } catch (e) {
-        console.warn('Could not set status listener:', e);
+        console.error('❌ Error initializing TonConnectUI:', e);
+        showNotification('❌ خطأ في تهيئة TON Connect: ' + e.message, 'error');
     }
 }
 
@@ -189,10 +107,9 @@ function handleWalletStatusChange(wallet) {
     if (wallet) {
         console.log('✅ Wallet connected:', wallet);
         updateWalletUI(wallet);
-        selectedWallet = wallet;
         showNotification(`✅ تم ربط محفظة ${wallet.device?.appName || 'TON'} بنجاح`, 'success');
-        closeWalletModal();
         
+        // حفظ في localStorage
         const walletInfo = {
             address: wallet.account.address,
             provider: wallet.device?.appName || 'tonconnect',
@@ -201,12 +118,11 @@ function handleWalletStatusChange(wallet) {
         localStorage.setItem('connected_wallet', JSON.stringify(walletInfo));
         
     } else {
-        console.log('Wallet disconnected');
+        console.log('❌ Wallet disconnected');
         document.getElementById('walletInfo').style.display = 'none';
         document.getElementById('connectTonWalletBtn').innerHTML = '<i class="fas fa-wallet"></i> ربط محفظة TON';
         document.getElementById('walletAddress').value = '';
         document.getElementById('walletProvider').value = '';
-        selectedWallet = null;
         
         localStorage.removeItem('connected_wallet');
     }
@@ -214,27 +130,17 @@ function handleWalletStatusChange(wallet) {
 
 async function checkExistingConnection() {
     try {
-        if (!tonConnect) return;
+        if (!tonConnectUI) return;
         
-        if (typeof tonConnect.isConnected === 'function') {
-            const connected = await tonConnect.isConnected();
-            if (connected && tonConnect.wallet) {
-                updateWalletUI(tonConnect.wallet);
-                selectedWallet = tonConnect.wallet;
-            }
+        const wallet = tonConnectUI.wallet;
+        if (wallet) {
+            console.log('✅ Found existing wallet:', wallet);
+            updateWalletUI(wallet);
         } else {
+            // محاولة الاستعادة من localStorage
             const savedWallet = localStorage.getItem('connected_wallet');
             if (savedWallet) {
-                try {
-                    const walletInfo = JSON.parse(savedWallet);
-                    await tonConnect.restoreConnection();
-                    if (tonConnect.wallet) {
-                        updateWalletUI(tonConnect.wallet);
-                        selectedWallet = tonConnect.wallet;
-                    }
-                } catch (e) {
-                    console.warn('Could not restore connection:', e);
-                }
+                console.log('📦 Found saved wallet in localStorage');
             }
         }
     } catch (error) {
@@ -284,64 +190,17 @@ async function getWalletBalance(address) {
     }
 }
 
-function showWalletSelection() {
-    if (isConnecting) {
-        showNotification('🔄 جاري الاتصال بالفعل...', 'warning');
-        return;
-    }
+/* ============================================================
+   Wallet Connection
+============================================================ */
+
+async function connectTonWallet() {
+    console.log('🔘 Connect wallet button clicked');
     
-    if (!tonConnect) {
+    if (!tonConnectUI) {
         showNotification('🔄 جاري تهيئة TON Connect...', 'warning');
         initTonConnect();
-        setTimeout(() => {
-            if (tonConnect) {
-                showWalletSelectionModal();
-            } else {
-                showNotification('❌ فشل تهيئة TON Connect. حاول تحديث الصفحة.', 'error');
-            }
-        }, 2000);
-    } else {
-        showWalletSelectionModal();
-    }
-}
-
-function showWalletSelectionModal() {
-    const modal = document.getElementById('wallet-modal');
-    const walletsList = document.getElementById('wallets-list');
-    
-    if (!modal || !walletsList) {
-        console.error('Modal elements not found');
-        return;
-    }
-    
-    walletsList.innerHTML = SUPPORTED_WALLETS.map(wallet => `
-        <div class="wallet-item" onclick="connectWallet('${wallet.name}')">
-            <div class="wallet-item-icon">
-                <span>${wallet.name[0]}</span>
-            </div>
-            <div class="wallet-item-info">
-                <div class="wallet-item-name">${wallet.name}</div>
-                <div class="wallet-item-desc">انقر للاتصال</div>
-            </div>
-            <i class="fas fa-chevron-left" style="color:#4dd0ff;"></i>
-        </div>
-    `).join('');
-    
-    modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
-}
-
-function closeWalletModal() {
-    const modal = document.getElementById('wallet-modal');
-    if (modal) {
-        modal.style.display = 'none';
-        document.body.style.overflow = '';
-    }
-}
-
-async function connectWallet(walletName) {
-    if (!tonConnect) {
-        showNotification('❌ TON Connect غير مهيئ', 'error');
+        setTimeout(connectTonWallet, 1500);
         return;
     }
     
@@ -352,31 +211,24 @@ async function connectWallet(walletName) {
     
     try {
         isConnecting = true;
-        closeWalletModal();
-        showNotification(`🔄 جاري الاتصال بـ ${walletName}...`, 'success');
+        closeSidebar();
         
-        const selectedWalletConfig = SUPPORTED_WALLETS.find(w => w.name === walletName);
+        showNotification('🔄 جاري فتح نافذة المحفظة...', 'success');
+        console.log('📤 Opening connect modal...');
         
-        if (!selectedWalletConfig) {
-            throw new Error('Wallet not found');
-        }
+        // ✅ فتح نافذة الاتصال
+        await tonConnectUI.openModal();
         
-        if (typeof tonConnect.connect === 'function') {
-            await tonConnect.connect();
-        } else {
-            await tonConnect.send('connect', { wallets: [selectedWalletConfig] });
-        }
+        console.log('✅ Modal opened successfully');
         
     } catch (error) {
-        console.error('Error connecting wallet:', error);
+        console.error('❌ Error opening wallet:', error);
         
-        let errorMessage = 'فشل الاتصال بالمحفظة';
-        if (error.message.includes('timeout')) {
-            errorMessage = 'انتهت مهلة الاتصال';
-        } else if (error.message.includes('rejected')) {
-            errorMessage = 'تم رفض الاتصال من قبل المستخدم';
-        } else if (error.message.includes('no wallet')) {
-            errorMessage = 'لم يتم العثور على محفظة. تأكد من تثبيت المحفظة أولاً.';
+        let errorMessage = 'فشل فتح المحفظة';
+        if (error.message && error.message.includes('closed')) {
+            errorMessage = 'تم إغلاق نافذة المحفظة';
+        } else if (error.message && error.message.includes('manifest')) {
+            errorMessage = 'مشكلة في ملف manifest.json';
         }
         
         showNotification(`❌ ${errorMessage}`, 'error');
@@ -385,10 +237,26 @@ async function connectWallet(walletName) {
     }
 }
 
+async function disconnectWallet() {
+    if (!tonConnectUI) {
+        showNotification('❌ لا يوجد اتصال', 'error');
+        return;
+    }
+    
+    try {
+        await tonConnectUI.disconnect();
+        showNotification('✅ تم قطع الاتصال', 'success');
+    } catch (error) {
+        console.error('Error disconnecting:', error);
+        showNotification('❌ فشل قطع الاتصال', 'error');
+    }
+}
+
 function checkWalletBeforePurchase() {
     const walletInfo = document.getElementById('walletInfo');
+    const walletAddress = document.getElementById('walletAddress').value;
     
-    if (!walletInfo || walletInfo.style.display !== 'block' || !selectedWallet) {
+    if (!walletInfo || walletInfo.style.display !== 'block' || !walletAddress) {
         showNotification('⚠️ يجب ربط المحفظة أولاً قبل الشراء', 'warning');
         
         const sidebar = document.getElementById("sidebar");
@@ -396,14 +264,14 @@ function checkWalletBeforePurchase() {
         sidebar.classList.add("open");
         overlay.style.display = "block";
         
-        setTimeout(() => {
-            showWalletSelection();
-        }, 500);
-        
         return false;
     }
     return true;
 }
+
+/* ============================================================
+   UI Functions
+============================================================ */
 
 function toggleSidebar() {
     const sb = document.getElementById("sidebar");
@@ -426,8 +294,9 @@ function closeSidebar() {
     ov.style.display = "none";
     document.body.style.overflow = '';
 }
+
 /* ============================================================
-   Part 2 - Prices, Purchase, Mobile
+   Prices and Packages
 ============================================================ */
 
 function setupPackageClick() {
@@ -523,10 +392,12 @@ function calculateCustomAmount() {
 }
 
 /* ============================================================
-   Purchase Handlers - معدلة
+   Purchase Handlers - Fixed
 ============================================================ */
 
 async function handleStarsPurchase() {
+    console.log('🛒 Stars purchase clicked');
+    
     if (!checkWalletBeforePurchase()) {
         return;
     }
@@ -548,37 +419,50 @@ async function handleStarsPurchase() {
     const tonAmount = (amount * TON_PER_STAR).toFixed(4);
     const orderId = "ORD-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7).toUpperCase();
     
-    if (!tonConnect || !selectedWallet) {
-        showNotification('❌ المحفظة غير متصلة. جاري إعادة الاتصال...', 'warning');
-        showWalletSelection();
+    // ✅ التحقق من tonConnectUI
+    if (!tonConnectUI) {
+        showNotification('❌ TON Connect غير مهيئ. جاري إعادة التهيئة...', 'warning');
+        initTonConnect();
         return;
     }
     
-    showNotification(`🔄 جاري فتح محفظة ${selectedWallet.device?.appName || 'TON'}...`, 'success');
+    // ✅ التحقق من الاتصال
+    if (!tonConnectUI.wallet) {
+        showNotification('❌ المحفظة غير متصلة. جاري فتح نافذة الاتصال...', 'warning');
+        try {
+            await tonConnectUI.openModal();
+        } catch (e) {
+            showNotification('❌ فشل فتح نافذة المحفظة', 'error');
+        }
+        return;
+    }
+    
+    showNotification(`🔄 جاري إرسال ${amount} نجمة...`, 'success');
     
     try {
         const payload = base64Encode(`STARS_PURCHASE:${username}:${amount}:${orderId}:${Date.now()}`);
-        const messages = [{
-            address: RECEIVER_WALLET,
-            amount: toNano(tonAmount),
-            payload: payload
-        }];
-        const validUntil = Math.floor(Date.now() / 1000) + 10 * 60;
         
         console.log('📤 Sending transaction:', {
-            validUntil: validUntil,
-            messages: messages,
-            tonAmount: tonAmount
+            validUntil: Math.floor(Date.now() / 1000) + 10 * 60,
+            messages: [{
+                address: RECEIVER_WALLET,
+                amount: toNano(tonAmount),
+                payload: payload
+            }]
         });
         
-        const result = await tonConnect.sendTransaction({
-            validUntil: validUntil,
-            messages: messages
+        // ✅ إرسال المعاملة
+        const result = await tonConnectUI.sendTransaction({
+            validUntil: Math.floor(Date.now() / 1000) + 10 * 60,
+            messages: [{
+                address: RECEIVER_WALLET,
+                amount: toNano(tonAmount),
+                payload: payload
+            }]
         });
         
         console.log('✅ Transaction result:', result);
-        
-        showNotification(`✅ تم إرسال ${amount} نجمة للمعالجة!`, 'success');
+        showNotification(`✅ تم إرسال ${amount} نجمة بنجاح!`, 'success');
         
         saveOrder({
             type: 'stars',
@@ -586,7 +470,7 @@ async function handleStarsPurchase() {
             amount: amount,
             tonAmount: tonAmount,
             orderId: orderId,
-            status: 'pending',
+            status: 'completed',
             date: getFormattedDate(),
             transaction: result
         });
@@ -594,17 +478,19 @@ async function handleStarsPurchase() {
     } catch (error) {
         console.error('❌ Transaction error:', error);
         
-        if (error.message.includes('cancelled') || error.message.includes('rejected')) {
+        if (error.message && (error.message.includes('cancelled') || error.message.includes('rejected'))) {
             showNotification('❌ تم إلغاء المعاملة من قبل المستخدم', 'error');
-        } else if (error.message.includes('timeout')) {
+        } else if (error.message && error.message.includes('timeout')) {
             showNotification('❌ انتهت مهلة المعاملة', 'error');
         } else {
-            showNotification('❌ فشل إتمام المعاملة: ' + error.message, 'error');
+            showNotification('❌ فشل إتمام المعاملة', 'error');
         }
     }
 }
 
 async function handlePremiumPurchase() {
+    console.log('🛒 Premium purchase clicked');
+    
     if (!checkWalletBeforePurchase()) {
         return;
     }
@@ -626,37 +512,38 @@ async function handlePremiumPurchase() {
     const planName = selectedPlan.querySelector('span').innerText;
     const orderId = "PRM-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7).toUpperCase();
     
-    if (!tonConnect || !selectedWallet) {
-        showNotification('❌ المحفظة غير متصلة. جاري إعادة الاتصال...', 'warning');
-        showWalletSelection();
+    if (!tonConnectUI) {
+        showNotification('❌ TON Connect غير مهيئ. جاري إعادة التهيئة...', 'warning');
+        initTonConnect();
         return;
     }
     
-    showNotification(`🔄 جاري فتح محفظة ${selectedWallet.device?.appName || 'TON'}...`, 'success');
+    if (!tonConnectUI.wallet) {
+        showNotification('❌ المحفظة غير متصلة. جاري فتح نافذة الاتصال...', 'warning');
+        try {
+            await tonConnectUI.openModal();
+        } catch (e) {
+            showNotification('❌ فشل فتح نافذة المحفظة', 'error');
+        }
+        return;
+    }
+    
+    showNotification(`🔄 جاري إرسال طلب ${planName}...`, 'success');
     
     try {
         const payload = base64Encode(`PREMIUM_PURCHASE:${username}:${planName}:${orderId}:${Date.now()}`);
-        const messages = [{
-            address: RECEIVER_WALLET,
-            amount: toNano(tonAmount),
-            payload: payload
-        }];
-        const validUntil = Math.floor(Date.now() / 1000) + 10 * 60;
         
-        console.log('📤 Sending transaction:', {
-            validUntil: validUntil,
-            messages: messages,
-            tonAmount: tonAmount
-        });
-        
-        const result = await tonConnect.sendTransaction({
-            validUntil: validUntil,
-            messages: messages
+        const result = await tonConnectUI.sendTransaction({
+            validUntil: Math.floor(Date.now() / 1000) + 10 * 60,
+            messages: [{
+                address: RECEIVER_WALLET,
+                amount: toNano(tonAmount),
+                payload: payload
+            }]
         });
         
         console.log('✅ Transaction result:', result);
-        
-        showNotification(`✅ تم إرسال طلب ${planName} للمعالجة!`, 'success');
+        showNotification(`✅ تم شراء ${planName} بنجاح!`, 'success');
         
         saveOrder({
             type: 'premium',
@@ -664,7 +551,7 @@ async function handlePremiumPurchase() {
             plan: planName,
             tonAmount: tonAmount,
             orderId: orderId,
-            status: 'pending',
+            status: 'completed',
             date: getFormattedDate(),
             transaction: result
         });
@@ -672,12 +559,12 @@ async function handlePremiumPurchase() {
     } catch (error) {
         console.error('❌ Transaction error:', error);
         
-        if (error.message.includes('cancelled') || error.message.includes('rejected')) {
+        if (error.message && (error.message.includes('cancelled') || error.message.includes('rejected'))) {
             showNotification('❌ تم إلغاء المعاملة من قبل المستخدم', 'error');
-        } else if (error.message.includes('timeout')) {
+        } else if (error.message && error.message.includes('timeout')) {
             showNotification('❌ انتهت مهلة المعاملة', 'error');
         } else {
-            showNotification('❌ فشل إتمام المعاملة: ' + error.message, 'error');
+            showNotification('❌ فشل إتمام المعاملة', 'error');
         }
     }
 }
@@ -871,9 +758,10 @@ document.addEventListener('DOMContentLoaded', function() {
     setupPackageClick();
     setupPremiumSelect();
     
+    // ✅ تأخير تهيئة TON Connect عشان المكتبة تحمل
     setTimeout(() => {
         initTonConnect();
-    }, 1000);
+    }, 2000);
     
     initMobileEnhancements();
     
@@ -960,18 +848,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            closeWalletModal();
             closeSidebar();
-        }
-    });
-    
-    const modals = ['wallet-modal'];
-    modals.forEach(modalId => {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.addEventListener('touchmove', (e) => {
-                e.preventDefault();
-            }, { passive: false });
         }
     });
 });
@@ -980,8 +857,7 @@ document.addEventListener('DOMContentLoaded', function() {
    Export functions for global use
 ============================================================ */
 
-window.showWalletSelection = showWalletSelection;
-window.connectWallet = connectWallet;
-window.closeWalletModal = closeWalletModal;
+window.connectTonWallet = connectTonWallet;
+window.disconnectWallet = disconnectWallet;
 window.toggleSidebar = toggleSidebar;
 window.closeSidebar = closeSidebar;

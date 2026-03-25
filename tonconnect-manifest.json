@@ -1,7 +1,7 @@
 {
-    "url": "https://your-domain.com",
+    "url": "https://stargo.vercel.app",
     "name": "starGo",
-    "iconUrl": "https://your-domain.com/jmage.jpg",
-    "termsOfUseUrl": "https://your-domain.com",
-    "privacyPolicyUrl": "https://your-domain.com"
+    "iconUrl": "https://stargo.vercel.app/jimage.jpg",
+    "termsOfUseUrl": "https://stargo.vercel.app",
+    "privacyPolicyUrl": "https://stargo.vercel.app"
 }

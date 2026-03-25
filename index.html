@@ -8,39 +8,34 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>starGo - شراء نجوم تيليجرام</title>
     
-    <!-- TON Connect SDK -->
+    <!-- TON Connect UI SDK -->
     <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     
-    <!-- Font Awesome للأيقونات -->
+    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
-    <!-- PWA Manifest -->
+    <!-- PWA -->
     <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="image.jpg">
+    <link rel="apple-touch-icon" href="jimage.jpg">
     
     <!-- CSS -->
     <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-<!-- SIDEBAR (right) -->
+<!-- SIDEBAR -->
 <div id="sidebar" aria-hidden="true">
     <h2 class="menu-title">القائمة</h2>
     
-    <!-- زر تسجيل الدخول -->
-    
-    
-    <!-- قسم ربط المحفظة -->
+    <!-- ✅ قسم ربط المحفظة فقط (مفيش تسجيل دخول) -->
     <div id="ton-wallet-section" class="wallet-section">
-        <form id="walletForm" onsubmit="return false;">
-            <input type="hidden" id="walletAddress" name="wallet_address" value="">
-            <input type="hidden" id="walletProvider" name="wallet_provider" value="">
-            
-            <button type="button" id="connectTonWalletBtn" class="menu-btn wallet-btn" onclick="connectTonWallet()">
-                <i class="fas fa-wallet"></i>
-                ربط محفظة TON
-            </button>
-        </form>
+        <input type="hidden" id="walletAddress" value="">
+        <input type="hidden" id="walletProvider" value="">
+        
+        <button type="button" id="connectTonWalletBtn" class="menu-btn wallet-btn" onclick="connectTonWallet()">
+            <i class="fas fa-wallet"></i>
+            ربط محفظة TON
+        </button>
         
         <div id="walletInfo" style="display:none;" class="wallet-info">
             <div class="wallet-status">
@@ -58,43 +53,26 @@
             </button>
         </div>
     </div>
-
-    <!-- معلومات المستخدم بعد تسجيل الدخول -->
-    <div id="user-info">
-        <div class="user-header">
-            <img id="sidebar-avatar" src="jimage.jpg" alt="avatar" onerror="this.src='data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%3Crect%20width%3D%2240%22%20height%3D%2240%22%20fill%3D%22%232c4b6c%22%2F%3E%3Ctext%20x%3D%2220%22%20y%3D%2225%22%20font-size%3D%2220%22%20text-anchor%3D%22middle%22%20fill%3D%22%23aaccff%22%20font-family%3D%22Arial%22%3E👤%3C%2Ftext%3E%3C%2Fsvg%3E';">
-            <div class="user-details">
-                <span id="sidebar-username">@example</span>
-                <span id="sidebar-id" style="color:#9fb7d8; font-size:12px;">ID: -</span>
-            </div>
-        </div>
-        
-        <!-- زر تسجيل الخروج -->
-        <button id="logout-btn" class="menu-btn logout" onclick="confirmLogout()">
-            <i class="fas fa-sign-out-alt"></i>
-            تسجيل الخروج
-        </button>
-    </div>
 </div>
 
-<!-- overlay -->
+<!-- OVERLAY -->
 <div id="overlay" onclick="closeSidebar()"></div>
 
-<!-- header -->
+<!-- HEADER -->
 <header class="header" role="banner">
     <img src="jimage.jpg" class="logo" alt="logo" onerror="this.src='data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2248%22%20height%3D%2248%22%20viewBox%3D%220%200%2048%2048%22%3E%3Crect%20width%3D%2248%22%20height%3D%2248%22%20fill%3D%22%231e3a5f%22%2F%3E%3Ctext%20x%3D%2224%22%20y%3D%2230%22%20font-size%3D%2224%22%20text-anchor%3D%22middle%22%20fill%3D%22%23ffd966%22%20font-family%3D%22Arial%22%3E⭐%3C%2Ftext%3E%3C%2Fsvg%3E';">
     <h1 class="site-name">starGo</h1>
 </header>
 
-<!-- hamburger -->
+<!-- HAMBURGER -->
 <div class="hamburger" onclick="toggleSidebar()" aria-label="فتح القائمة" role="button" tabindex="0">
     <span></span><span></span><span></span>
 </div>
 
-<!-- main container -->
+<!-- MAIN -->
 <main class="container">
 
-    <!-- tabs -->
+    <!-- TABS -->
     <div class="tabs" role="tablist" aria-label="Sections">
         <button class="tab-btn active" role="tab" onclick="switchTab('stars')">Stars</button>
         <button class="tab-btn" role="tab" onclick="switchTab('premium')">Premium</button>
@@ -105,13 +83,12 @@
         <div class="card">
             <h2>Buy Telegram Stars ⭐</h2>
 
-            <!-- Choose recipient -->
+            <!-- User Input -->
             <div id="user-box">
                 <div id="user-input-container">
                     <input id="username-input" type="text" placeholder="@username" aria-label="username">
                     <button id="username-submit" class="pay-btn" onclick="checkUser()">Continue</button>
                 </div>
-                <!-- user card (hidden by default) -->
                 <div id="user-card" style="display:none;">
                     <img id="user-avatar" src="jimage.jpg" alt="avatar" onerror="this.src='data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2242%22%20height%3D%2242%22%20viewBox%3D%220%200%2042%2042%22%3E%3Crect%20width%3D%2242%22%20height%3D%2242%22%20fill%3D%22%232c4b6c%22%2F%3E%3Ctext%20x%3D%2221%22%20y%3D%2226%22%20font-size%3D%2220%22%20text-anchor%3D%22middle%22%20fill%3D%22%23aaccff%22%20font-family%3D%22Arial%22%3E👤%3C%2Ftext%3E%3C%2Fsvg%3E';">
                     <span id="user-name"></span>
@@ -119,13 +96,14 @@
                 </div>
             </div>
 
-            <!-- Stars amount input -->
+            <!-- Stars Amount -->
             <input id="stars-amount" class="stars-input" type="number" min="50" placeholder="Enter stars amount (minimum 50)" aria-label="stars amount" oninput="calculateStars()">
 
             <div id="calc-result" aria-live="polite"></div>
 
             <div class="separator"></div>
 
+            <!-- Packages -->
             <div id="packages" class="packages-container">
                 <h3>Or select a package</h3>
 
@@ -193,7 +171,6 @@
                     <input id="premium-username-input" placeholder="Enter Telegram username" style="flex:1;padding:10px;border-radius:10px;border:1px solid #243544;background:#0b2130;color:#fff">
                     <button id="premium-username-submit" class="pay-btn" onclick="checkPremiumUser()">Continue</button>
                 </div>
-                <!-- premium user card (hidden by default) -->
                 <div id="premium-user-card" style="display:none;margin-top:10px;background:#14293f;padding:12px;border-radius:12px;align-items:center;gap:12px;border:1px solid #1f3a56">
                     <img id="premium-user-avatar" src="jimage.jpg" alt="avatar" style="width:42px;height:42px;border-radius:50%;object-fit:cover" onerror="this.src='data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2242%22%20height%3D%2242%22%20viewBox%3D%220%200%2042%2042%22%3E%3Crect%20width%3D%2242%22%20height%3D%2242%22%20fill%3D%22%232c4b6c%22%2F%3E%3Ctext%20x%3D%2221%22%20y%3D%2226%22%20font-size%3D%2220%22%20text-anchor%3D%22middle%22%20fill%3D%22%23aaccff%22%20font-family%3D%22Arial%22%3E👤%3C%2Ftext%3E%3C%2Fsvg%3E';">
                     <span id="premium-user-name" style="color:#fff"></span>
@@ -222,168 +199,8 @@
 
 </main>
 
-<!-- LOGIN POPUP -->
-<div id="login-popup" style="display:none">
-    <div class="login-box">
-        <h3 style="margin:0 0 8px 0;color:#e6f7ff">
-            <i class="fas fa-telegram"></i>
-            تسجيل الدخول عبر Telegram
-        </h3>
-        <p style="color:#9fb7d8;margin:0 0 8px 0">ادخل @username (أو اكتب بدون @)</p>
-        <input id="login-username" placeholder="@username">
-        
-        <!-- حقل إدخال الكود -->
-        <div id="code-input-container" style="display:none; margin-top:15px;">
-            <p style="color:#9fb7d8;margin:0 0 8px 0">أدخل الكود المرسل إلى Telegram</p>
-            <input id="login-code" placeholder="أدخل الكود" type="text" maxlength="6">
-            <button id="verify-code-btn" class="btn" style="background:#00c853;color:#fff;margin-top:10px;padding:12px;border-radius:8px;border:none;width:100%" onclick="verifyCode()">
-                <i class="fas fa-check-circle"></i>
-                تأكيد الكود
-            </button>
-        </div>
-        
-        <button id="login-send" class="btn" style="background:#0d6efd;color:#fff;margin-top:10px;padding:12px;border-radius:8px;border:none" onclick="sendLoginCode()">
-            <i class="fas fa-paper-plane"></i>
-            أرسل رمز التحقق
-        </button>
-
-        <div id="login-link-wrap" style="display:none;margin-top:10px">
-            <p id="login-msg" style="color:#9fb7d8;margin:0"></p>
-            <a id="login-open-link" href="#" target="_blank" style="display:block;margin-top:8px;background:#0d6efd;padding:10px;text-align:center;border-radius:8px;color:white;text-decoration:none">
-                <i class="fas fa-telegram"></i>
-                افتح Telegram
-            </a>
-        </div>
-
-        <p id="login-status" style="margin-top:10px;display:none;color:#9fb7d8"></p>
-
-        <button onclick="closeLogin()" style="width:100%;padding:10px;margin-top:12px;border-radius:8px;border:none;background:#223344;color:white;cursor:pointer">
-            <i class="fas fa-times"></i>
-            إغلاق
-        </button>
-    </div>
-</div>
-
-<!-- تأكيد تسجيل الخروج -->
-<div id="logout-confirm-popup" style="display:none;">
-    <div class="confirm-box">
-        <h3><i class="fas fa-sign-out-alt"></i> تسجيل الخروج</h3>
-        <p>هل أنت متأكد من تسجيل الخروج؟</p>
-        <div class="confirm-buttons">
-            <button onclick="logout()" class="confirm-btn yes">
-                <i class="fas fa-check"></i>
-                نعم، تسجيل الخروج
-            </button>
-            <button onclick="closeConfirmPopup()" class="confirm-btn no">
-                <i class="fas fa-times"></i>
-                إلغاء
-            </button>
-        </div>
-    </div>
-</div>
-
 <!-- JavaScript -->
 <script src="script.js"></script>
-
-<!-- TON Connect Initialization -->
-<script>
-let tonConnectUI;
-
-// ⚠️ غيّر الرابط ده لدومينك الحقيقي
-const MANIFEST_URL = 'https://stargo.vercel.app/tonconnect-manifest.json';
-
-window.addEventListener('load', function () {
-    console.log('🔗 Manifest URL:', MANIFEST_URL);
-    
-    try {
-        tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
-            manifestUrl: MANIFEST_URL,
-        });
-
-        tonConnectUI.onStatusChange(function (wallet) {
-            if (wallet) {
-                console.log('✅ Wallet connected:', wallet);
-                
-                const rawAddress = wallet.account.address;
-                const providerName = wallet.device ? wallet.device.appName : 'TON Wallet';
-
-                document.getElementById('walletAddress').value = rawAddress;
-                document.getElementById('walletProvider').value = providerName;
-
-                const shortAddr = rawAddress.slice(0, 6) + '...' + rawAddress.slice(-4);
-                document.getElementById('connectedAddress').textContent = shortAddr;
-
-                document.getElementById('walletInfo').style.display = 'block';
-                document.getElementById('connectTonWalletBtn').style.display = 'none';
-
-                // إرسال للـ API
-                saveWalletToServer(rawAddress, providerName);
-
-            } else {
-                console.log('❌ Wallet disconnected');
-                
-                document.getElementById('walletInfo').style.display = 'none';
-                document.getElementById('connectTonWalletBtn').style.display = 'block';
-                document.getElementById('walletAddress').value = '';
-                document.getElementById('walletProvider').value = '';
-            }
-        });
-
-        console.log('✅ TON Connect UI initialized');
-
-    } catch (e) {
-        console.error('❌ TON Connect error:', e);
-    }
-});
-
-async function connectTonWallet() {
-    closeSidebar();
-    
-    if (!tonConnectUI) {
-        alert('جاري التحميل... حاول مجدداً بعد لحظة');
-        return;
-    }
-    
-    try {
-        await tonConnectUI.openModal();
-    } catch (e) {
-        console.error('❌ Error opening wallet:', e);
-        alert('حدث خطأ أثناء فتح نافذة المحفظة');
-    }
-}
-
-async function disconnectWallet() {
-    if (!tonConnectUI) return;
-    
-    try {
-        await tonConnectUI.disconnect();
-    } catch (e) {
-        console.error('❌ Error disconnecting:', e);
-    }
-}
-
-// إرسال بيانات المحفظة للـ Server
-async function saveWalletToServer(address, provider) {
-    try {
-        const response = await fetch('/api/connect-wallet', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                wallet_address: address,
-                wallet_provider: provider
-            })
-        });
-        
-        const data = await response.json();
-        console.log('✅ Server response:', data);
-        
-    } catch (error) {
-        console.error('❌ Server error:', error);
-    }
-}
-</script>
 
 </body>
 </html>

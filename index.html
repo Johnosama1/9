@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+    <meta name="theme-color" content="#071028" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>starGo - شراء نجوم تيليجرام</title>
+    
+    <!-- TON Connect SDK -->
+    <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
+    
+    <!-- Font Awesome للأيقونات -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="image.jpg">
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- SIDEBAR (right) -->
+<div id="sidebar" aria-hidden="true">
+    <h2 class="menu-title">القائمة</h2>
+    
+    <!-- زر تسجيل الدخول -->
+    <button id="login-btn" class="menu-btn" onclick="openLogin()">
+        <i class="fas fa-sign-in-alt"></i>
+        تسجيل الدخول
+    </button>
+    
+    <!-- قسم ربط المحفظة -->
+    <div id="ton-wallet-section" class="wallet-section">
+        <form id="walletForm" onsubmit="return false;">
+            <input type="hidden" id="walletAddress" name="wallet_address" value="">
+            <input type="hidden" id="walletProvider" name="wallet_provider" value="">
+            
+            <button type="button" id="connectTonWalletBtn" class="menu-btn wallet-btn" onclick="connectTonWallet()">
+                <i class="fas fa-wallet"></i>
+                ربط محفظة TON
+            </button>
+        </form>
+        
+        <div id="walletInfo" style="display:none;" class="wallet-info">
+            <div class="wallet-status">
+                <i class="fas fa-check-circle wallet-icon"></i>
+                <span>المحفظة مربوطة:</span>
+            </div>
+            <div class="wallet-address" id="connectedAddress"></div>
+            <div class="wallet-balance" id="walletBalance" style="display:none; margin-top:8px;">
+                <i class="fas fa-coins"></i>
+                <span>الرصيد: <span id="balanceAmount">0</span> TON</span>
+            </div>
+            <button type="button" onclick="disconnectWallet()" class="menu-btn" style="margin-top:8px; background:#c0392b;">
+                <i class="fas fa-unlink"></i>
+                قطع الاتصال
+            </button>
+        </div>
+    </div>
+
+    <!-- معلومات المستخدم بعد تسجيل الدخول -->
+    <div id="user-info">
+        <div class="user-header">
+            <img id="sidebar-avatar" src="jimage.jpg" alt="avatar" onerror="this.src='data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2040%2040%22%3E%3Crect%20width%3D%2240%22%20height%3D%2240%22%20fill%3D%22%232c4b6c%22%2F%3E%3Ctext%20x%3D%2220%22%20y%3D%2225%22%20font-size%3D%2220%22%20text-anchor%3D%22middle%22%20fill%3D%22%23aaccff%22%20font-family%3D%22Arial%22%3E👤%3C%2Ftext%3E%3C%2Fsvg%3E';">
+            <div class="user-details">
+                <span id="sidebar-username">@example</span>
+                <span id="sidebar-id" style="color:#9fb7d8; font-size:12px;">ID: -</span>
+            </div>
+        </div>
+        
+        <!-- زر تسجيل الخروج -->
+        <button id="logout-btn" class="menu-btn logout" onclick="confirmLogout()">
+            <i class="fas fa-sign-out-alt"></i>
+            تسجيل الخروج
+        </button>
+    </div>
+</div>
+
+<!-- overlay -->
+<div id="overlay" onclick="closeSidebar()"></div>
+
+<!-- header -->
+<header class="header" role="banner">
+    <img src="jimage.jpg" class="logo" alt="logo" onerror="this.src='data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2248%22%20height%3D%2248%22%20viewBox%3D%220%200%2048%2048%22%3E%3Crect%20width%3D%2248%22%20height%3D%2248%22%20fill%3D%22%231e3a5f%22%2F%3E%3Ctext%20x%3D%2224%22%20y%3D%2230%22%20font-size%3D%2224%22%20text-anchor%3D%22middle%22%20fill%3D%22%23ffd966%22%20font-family%3D%22Arial%22%3E⭐%3C%2Ftext%3E%3C%2Fsvg%3E';">
+    <h1 class="site-name">starGo</h1>
+</header>
+
+<!-- hamburger -->
+<div class="hamburger" onclick="toggleSidebar()" aria-label="فتح القائمة" role="button" tabindex="0">
+    <span></span><span></span><span></span>
+</div>
+
+<!-- main container -->
+<main class="container">
+
+    <!-- tabs -->
+    <div class="tabs" role="tablist" aria-label="Sections">
+        <button class="tab-btn active" role="tab" onclick="switchTab('stars')">Stars</button>
+        <button class="tab-btn" role="tab" onclick="switchTab('premium')">Premium</button>
+    </div>
+
+    <!-- STARS SECTION -->
+    <section class="content-box active" id="stars-content" role="tabpanel">
+        <div class="card">
+            <h2>Buy Telegram Stars ⭐</h2>
+
+            <!-- Choose recipient -->
+            <div id="user-box">
+                <div id="user-input-container">
+                    <input id="username-input" type="text" placeholder="@username" aria-label="username">
+                    <button id="username-submit" class="pay-btn" onclick="checkUser()">Continue</button>
+                </div>
+                <!-- user card (hidden by default) -->
+                <div id="user-card" style="display:none;">
+                    <img id="user-avatar" src="jimage.jpg" alt="avatar" onerror="this.src='data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2242%22%20height%3D%2242%22%20viewBox%3D%220%200%2042%2042%22%3E%3Crect%20width%3D%2242%22%20height%3D%2242%22%20fill%3D%22%232c4b6c%22%2F%3E%3Ctext%20x%3D%2221%22%20y%3D%2226%22%20font-size%3D%2220%22%20text-anchor%3D%22middle%22%20fill%3D%22%23aaccff%22%20font-family%3D%22Arial%22%3E👤%3C%2Ftext%3E%3C%2Fsvg%3E';">
+                    <span id="user-name"></span>
+                    <button id="remove-user" onclick="removeUser()" style="margin-left:auto;background:none;border:none;font-size:20px;color:#ff5555;cursor:pointer">✖</button>
+                </div>
+            </div>
+
+            <!-- Stars amount input -->
+            <input id="stars-amount" class="stars-input" type="number" min="50" placeholder="Enter stars amount (minimum 50)" aria-label="stars amount" oninput="calculateStars()">
+
+            <div id="calc-result" aria-live="polite"></div>
+
+            <div class="separator"></div>
+
+            <div id="packages" class="packages-container">
+                <h3>Or select a package</h3>
+
+                <div class="package" data-amount="50" data-ton="0.4963" onclick="selectPackage(50, 0.4963)">
+                    <div style="display:flex;align-items:center;gap:10px"><input type="radio" name="stars-pack" id="pack-50"><span class="pack-stars">⭐ 50 Stars</span></div>
+                    <div style="display:flex;align-items:center;gap:8px"><span class="pack-ton">🔷 0.4963</span><span class="pack-usd">~ $0.00</span></div>
+                </div>
+
+                <div class="package" data-amount="75" data-ton="0.7445" onclick="selectPackage(75, 0.7445)">
+                    <div style="display:flex;align-items:center;gap:10px"><input type="radio" name="stars-pack" id="pack-75"><span class="pack-stars">⭐ 75 Stars</span></div>
+                    <div style="display:flex;align-items:center;gap:8px"><span class="pack-ton">🔷 0.7445</span><span class="pack-usd">~ $0.00</span></div>
+                </div>
+
+                <div class="package" data-amount="100" data-ton="0.9927" onclick="selectPackage(100, 0.9927)">
+                    <div style="display:flex;align-items:center;gap:10px"><input type="radio" name="stars-pack" id="pack-100"><span class="pack-stars">⭐ 100 Stars</span></div>
+                    <div style="display:flex;align-items:center;gap:8px"><span class="pack-ton">🔷 0.9927</span><span class="pack-usd">~ $0.00</span></div>
+                </div>
+
+                <div class="package" data-amount="150" data-ton="1.4891" onclick="selectPackage(150, 1.4891)">
+                    <div style="display:flex;align-items:center;gap:10px"><input type="radio" name="stars-pack" id="pack-150"><span class="pack-stars">⭐ 150 Stars</span></div>
+                    <div style="display:flex;align-items:center;gap:8px"><span class="pack-ton">🔷 1.4891</span><span class="pack-usd">~ $0.00</span></div>
+                </div>
+
+                <div class="package" data-amount="200" data-ton="1.9855" onclick="selectPackage(200, 1.9855)">
+                    <div style="display:flex;align-items:center;gap:10px"><input type="radio" name="stars-pack" id="pack-200"><span class="pack-stars">⭐ 200 Stars</span></div>
+                    <div style="display:flex;align-items:center;gap:8px"><span class="pack-ton">🔷 1.9855</span><span class="pack-usd">~ $0.00</span></div>
+                </div>
+
+                <div class="package" data-amount="350" data-ton="3.4745" onclick="selectPackage(350, 3.4745)">
+                    <div style="display:flex;align-items:center;gap:10px"><input type="radio" name="stars-pack" id="pack-350"><span class="pack-stars">⭐ 350 Stars</span></div>
+                    <div style="display:flex;align-items:center;gap:8px"><span class="pack-ton">🔷 3.4745</span><span class="pack-usd">~ $0.00</span></div>
+                </div>
+
+                <div class="package" data-amount="500" data-ton="4.9636" onclick="selectPackage(500, 4.9636)">
+                    <div style="display:flex;align-items:center;gap:10px"><input type="radio" name="stars-pack" id="pack-500"><span class="pack-stars">⭐ 500 Stars</span></div>
+                    <div style="display:flex;align-items:center;gap:8px"><span class="pack-ton">🔷 4.9636</span><span class="pack-usd">~ $0.00</span></div>
+                </div>
+
+                <div class="package" data-amount="750" data-ton="7.4455" onclick="selectPackage(750, 7.4455)">
+                    <div style="display:flex;align-items:center;gap:10px"><input type="radio" name="stars-pack" id="pack-750"><span class="pack-stars">⭐ 750 Stars</span></div>
+                    <div style="display:flex;align-items:center;gap:8px"><span class="pack-ton">🔷 7.4455</span><span class="pack-usd">~ $0.00</span></div>
+                </div>
+
+                <div class="package" data-amount="1000" data-ton="9.9273" onclick="selectPackage(1000, 9.9273)">
+                    <div style="display:flex;align-items:center;gap:10px"><input type="radio" name="stars-pack" id="pack-1000"><span class="pack-stars">⭐ 1,000 Stars</span></div>
+                    <div style="display:flex;align-items:center;gap:8px"><span class="pack-ton">🔷 9.9273</span><span class="pack-usd">~ $0.00</span></div>
+                </div>
+            </div>
+            
+            <button id="stars-continue-btn" class="pay-btn" style="margin-top:12px" onclick="buyStars()">
+                <i class="fas fa-shopping-cart"></i>
+                Buy Telegram Stars
+            </button>
+        </div>
+    </section>
+
+    <!-- PREMIUM SECTION -->
+    <section class="content-box" id="premium-content" role="tabpanel" style="display:none">
+        <div class="card">
+            <h2>Buy Telegram Premium ★</h2>
+
+            <h3>Choose recipient</h3>
+            <div id="premium-user-box" style="margin-bottom:12px">
+                <div id="premium-user-input-container" style="display:flex;gap:10px;direction:ltr">
+                    <input id="premium-username-input" placeholder="Enter Telegram username" style="flex:1;padding:10px;border-radius:10px;border:1px solid #243544;background:#0b2130;color:#fff">
+                    <button id="premium-username-submit" class="pay-btn" onclick="checkPremiumUser()">Continue</button>
+                </div>
+                <!-- premium user card (hidden by default) -->
+                <div id="premium-user-card" style="display:none;margin-top:10px;background:#14293f;padding:12px;border-radius:12px;align-items:center;gap:12px;border:1px solid #1f3a56">
+                    <img id="premium-user-avatar" src="jimage.jpg" alt="avatar" style="width:42px;height:42px;border-radius:50%;object-fit:cover" onerror="this.src='data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2242%22%20height%3D%2242%22%20viewBox%3D%220%200%2042%2042%22%3E%3Crect%20width%3D%2242%22%20height%3D%2242%22%20fill%3D%22%232c4b6c%22%2F%3E%3Ctext%20x%3D%2221%22%20y%3D%2226%22%20font-size%3D%2220%22%20text-anchor%3D%22middle%22%20fill%3D%22%23aaccff%22%20font-family%3D%22Arial%22%3E👤%3C%2Ftext%3E%3C%2Fsvg%3E';">
+                    <span id="premium-user-name" style="color:#fff"></span>
+                    <button id="premium-remove-user" onclick="removePremiumUser()" style="margin-left:auto;background:none;border:none;font-size:20px;color:#ff5555;cursor:pointer">✖</button>
+                </div>
+            </div>
+
+            <h3>Choose Duration</h3>
+
+            <div class="plan" data-ton="19.33" onclick="selectPremiumPlan(19.33, '1 year')">
+                <input type="radio" name="premium-plan" id="plan-1y"> <span>1 year</span> <span class="ton-value">🔷 19.33</span> <span class="usd-value">~ $0.00</span>
+            </div>
+            <div class="plan" data-ton="10.7" onclick="selectPremiumPlan(10.7, '6 months')">
+                <input type="radio" name="premium-plan" id="plan-6m"> <span>6 months</span> <span class="ton-value">🔷 10.7</span> <span class="usd-value">~ $0.00</span>
+            </div>
+            <div class="plan" data-ton="8" onclick="selectPremiumPlan(8, '3 months')">
+                <input type="radio" name="premium-plan" id="plan-3m"> <span>3 months</span> <span class="ton-value">🔷 8</span> <span class="usd-value">~ $0.00</span>
+            </div>
+
+            <button id="premium-continue-btn" class="pay-btn" style="margin-top:12px" onclick="buyPremium()">
+                <i class="fas fa-shopping-cart"></i>
+                Continue
+            </button>
+        </div>
+    </section>
+
+</main>
+
+<!-- LOGIN POPUP -->
+<div id="login-popup" style="display:none">
+    <div class="login-box">
+        <h3 style="margin:0 0 8px 0;color:#e6f7ff">
+            <i class="fas fa-telegram"></i>
+            تسجيل الدخول عبر Telegram
+        </h3>
+        <p style="color:#9fb7d8;margin:0 0 8px 0">ادخل @username (أو اكتب بدون @)</p>
+        <input id="login-username" placeholder="@username">
+        
+        <!-- حقل إدخال الكود -->
+        <div id="code-input-container" style="display:none; margin-top:15px;">
+            <p style="color:#9fb7d8;margin:0 0 8px 0">أدخل الكود المرسل إلى Telegram</p>
+            <input id="login-code" placeholder="أدخل الكود" type="text" maxlength="6">
+            <button id="verify-code-btn" class="btn" style="background:#00c853;color:#fff;margin-top:10px;padding:12px;border-radius:8px;border:none;width:100%" onclick="verifyCode()">
+                <i class="fas fa-check-circle"></i>
+                تأكيد الكود
+            </button>
+        </div>
+        
+        <button id="login-send" class="btn" style="background:#0d6efd;color:#fff;margin-top:10px;padding:12px;border-radius:8px;border:none" onclick="sendLoginCode()">
+            <i class="fas fa-paper-plane"></i>
+            أرسل رمز التحقق
+        </button>
+
+        <div id="login-link-wrap" style="display:none;margin-top:10px">
+            <p id="login-msg" style="color:#9fb7d8;margin:0"></p>
+            <a id="login-open-link" href="#" target="_blank" style="display:block;margin-top:8px;background:#0d6efd;padding:10px;text-align:center;border-radius:8px;color:white;text-decoration:none">
+                <i class="fas fa-telegram"></i>
+                افتح Telegram
+            </a>
+        </div>
+
+        <p id="login-status" style="margin-top:10px;display:none;color:#9fb7d8"></p>
+
+        <button onclick="closeLogin()" style="width:100%;padding:10px;margin-top:12px;border-radius:8px;border:none;background:#223344;color:white;cursor:pointer">
+            <i class="fas fa-times"></i>
+            إغلاق
+        </button>
+    </div>
+</div>
+
+<!-- تأكيد تسجيل الخروج -->
+<div id="logout-confirm-popup" style="display:none;">
+    <div class="confirm-box">
+        <h3><i class="fas fa-sign-out-alt"></i> تسجيل الخروج</h3>
+        <p>هل أنت متأكد من تسجيل الخروج؟</p>
+        <div class="confirm-buttons">
+            <button onclick="logout()" class="confirm-btn yes">
+                <i class="fas fa-check"></i>
+                نعم، تسجيل الخروج
+            </button>
+            <button onclick="closeConfirmPopup()" class="confirm-btn no">
+                <i class="fas fa-times"></i>
+                إلغاء
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript -->
+<script src="script.js"></script>
+
+<!-- TON Connect Initialization -->
+<script>
+let tonConnectUI;
+
+// ⚠️ غيّر الرابط ده لدومينك الحقيقي
+const MANIFEST_URL = 'https://your-domain.com/tonconnect-manifest.json';
+
+window.addEventListener('load', function () {
+    console.log('🔗 Manifest URL:', MANIFEST_URL);
+    
+    try {
+        tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
+            manifestUrl: MANIFEST_URL,
+        });
+
+        tonConnectUI.onStatusChange(function (wallet) {
+            if (wallet) {
+                console.log('✅ Wallet connected:', wallet);
+                
+                const rawAddress = wallet.account.address;
+                const providerName = wallet.device ? wallet.device.appName : 'TON Wallet';
+
+                document.getElementById('walletAddress').value = rawAddress;
+                document.getElementById('walletProvider').value = providerName;
+
+                const shortAddr = rawAddress.slice(0, 6) + '...' + rawAddress.slice(-4);
+                document.getElementById('connectedAddress').textContent = shortAddr;
+
+                document.getElementById('walletInfo').style.display = 'block';
+                document.getElementById('connectTonWalletBtn').style.display = 'none';
+
+                // إرسال للـ API
+                saveWalletToServer(rawAddress, providerName);
+
+            } else {
+                console.log('❌ Wallet disconnected');
+                
+                document.getElementById('walletInfo').style.display = 'none';
+                document.getElementById('connectTonWalletBtn').style.display = 'block';
+                document.getElementById('walletAddress').value = '';
+                document.getElementById('walletProvider').value = '';
+            }
+        });
+
+        console.log('✅ TON Connect UI initialized');
+
+    } catch (e) {
+        console.error('❌ TON Connect error:', e);
+    }
+});
+
+async function connectTonWallet() {
+    closeSidebar();
+    
+    if (!tonConnectUI) {
+        alert('جاري التحميل... حاول مجدداً بعد لحظة');
+        return;
+    }
+    
+    try {
+        await tonConnectUI.openModal();
+    } catch (e) {
+        console.error('❌ Error opening wallet:', e);
+        alert('حدث خطأ أثناء فتح نافذة المحفظة');
+    }
+}
+
+async function disconnectWallet() {
+    if (!tonConnectUI) return;
+    
+    try {
+        await tonConnectUI.disconnect();
+    } catch (e) {
+        console.error('❌ Error disconnecting:', e);
+    }
+}
+
+// إرسال بيانات المحفظة للـ Server
+async function saveWalletToServer(address, provider) {
+    try {
+        const response = await fetch('/api/connect-wallet', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                wallet_address: address,
+                wallet_provider: provider
+            })
+        });
+        
+        const data = await response.json();
+        console.log('✅ Server response:', data);
+        
+    } catch (error) {
+        console.error('❌ Server error:', error);
+    }
+}
+</script>
+
+</body>
+</html>

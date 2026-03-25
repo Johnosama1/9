@@ -1,10 +1,6 @@
 /* ============================================================
-   starGo - Full JavaScript File (No Login)
-   Version: 4.0 (No Login Required)
-============================================================ */
-
-/* ============================================================
-   Config & Wallet Settings
+   starGo - Full JavaScript File (No Login) - Part 1
+   Version: 5.0 (Fixed Transaction)
 ============================================================ */
 
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
@@ -55,10 +51,6 @@ let selectedWallet = null;
 let tonConnect = null;
 let isConnecting = false;
 
-/* ============================================================
-   Helper Functions
-============================================================ */
-
 function toNano(tonAmount) {
     return String(Math.floor(Number(tonAmount) * 1e9));
 }
@@ -75,10 +67,6 @@ function getFormattedDate() {
     const date = new Date();
     return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()} ${date.getHours()}:${date.getMinutes()}`;
 }
-
-/* ============================================================
-   Notification Function
-============================================================ */
 
 function showNotification(message, type = 'success') {
     const oldNotification = document.querySelector('.notification');
@@ -107,10 +95,6 @@ function showNotification(message, type = 'success') {
     }, 3000);
 }
 
-/* ============================================================
-   TON Connect Initialization
-============================================================ */
-
 function createManifest() {
     const manifest = {
         url: window.location.origin,
@@ -121,7 +105,6 @@ function createManifest() {
     };
     
     sessionStorage.setItem('tonconnect-manifest', JSON.stringify(manifest));
-    
     return manifest;
 }
 
@@ -301,10 +284,6 @@ async function getWalletBalance(address) {
     }
 }
 
-/* ============================================================
-   Wallet Selection Modal
-============================================================ */
-
 function showWalletSelection() {
     if (isConnecting) {
         showNotification('🔄 جاري الاتصال بالفعل...', 'warning');
@@ -408,7 +387,8 @@ async function connectWallet(walletName) {
 
 function checkWalletBeforePurchase() {
     const walletInfo = document.getElementById('walletInfo');
-    if (!walletInfo || walletInfo.style.display !== 'block') {
+    
+    if (!walletInfo || walletInfo.style.display !== 'block' || !selectedWallet) {
         showNotification('⚠️ يجب ربط المحفظة أولاً قبل الشراء', 'warning');
         
         const sidebar = document.getElementById("sidebar");
@@ -417,24 +397,13 @@ function checkWalletBeforePurchase() {
         overlay.style.display = "block";
         
         setTimeout(() => {
-            const walletSection = document.getElementById('ton-wallet-section');
-            if (walletSection) {
-                walletSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                walletSection.style.animation = 'pulse 0.5s ease';
-                setTimeout(() => {
-                    walletSection.style.animation = '';
-                }, 500);
-            }
-        }, 300);
+            showWalletSelection();
+        }, 500);
         
         return false;
     }
     return true;
 }
-
-/* ============================================================
-   UI Functions
-============================================================ */
 
 function toggleSidebar() {
     const sb = document.getElementById("sidebar");
@@ -457,9 +426,8 @@ function closeSidebar() {
     ov.style.display = "none";
     document.body.style.overflow = '';
 }
-
 /* ============================================================
-   Stars and Premium Functions
+   Part 2 - Prices, Purchase, Mobile
 ============================================================ */
 
 function setupPackageClick() {
@@ -555,7 +523,7 @@ function calculateCustomAmount() {
 }
 
 /* ============================================================
-   Purchase Handlers
+   Purchase Handlers - معدلة
 ============================================================ */
 
 async function handleStarsPurchase() {
@@ -580,38 +548,58 @@ async function handleStarsPurchase() {
     const tonAmount = (amount * TON_PER_STAR).toFixed(4);
     const orderId = "ORD-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7).toUpperCase();
     
-    showNotification(`🔄 جاري معالجة طلب ${amount} نجمة...`, 'success');
+    if (!tonConnect || !selectedWallet) {
+        showNotification('❌ المحفظة غير متصلة. جاري إعادة الاتصال...', 'warning');
+        showWalletSelection();
+        return;
+    }
     
-    if (tonConnect && selectedWallet) {
-        try {
-            const payload = base64Encode(`STARS_PURCHASE:${username}:${amount}:${orderId}:${Date.now()}`);
-            const messages = [{
-                address: RECEIVER_WALLET,
-                amount: toNano(tonAmount),
-                payload: payload
-            }];
-            const validUntil = Math.floor(Date.now() / 1000) + 10 * 60;
-            
-            await tonConnect.sendTransaction({
-                validUntil: validUntil,
-                messages: messages
-            });
-            
-            showNotification(`✅ تم شراء ${amount} نجمة بنجاح!`, 'success');
-            
-            saveOrder({
-                type: 'stars',
-                username: username,
-                amount: amount,
-                tonAmount: tonAmount,
-                orderId: orderId,
-                status: 'completed',
-                date: getFormattedDate()
-            });
-            
-        } catch (error) {
-            console.error('Transaction error:', error);
-            showNotification('❌ فشل إتمام المعاملة', 'error');
+    showNotification(`🔄 جاري فتح محفظة ${selectedWallet.device?.appName || 'TON'}...`, 'success');
+    
+    try {
+        const payload = base64Encode(`STARS_PURCHASE:${username}:${amount}:${orderId}:${Date.now()}`);
+        const messages = [{
+            address: RECEIVER_WALLET,
+            amount: toNano(tonAmount),
+            payload: payload
+        }];
+        const validUntil = Math.floor(Date.now() / 1000) + 10 * 60;
+        
+        console.log('📤 Sending transaction:', {
+            validUntil: validUntil,
+            messages: messages,
+            tonAmount: tonAmount
+        });
+        
+        const result = await tonConnect.sendTransaction({
+            validUntil: validUntil,
+            messages: messages
+        });
+        
+        console.log('✅ Transaction result:', result);
+        
+        showNotification(`✅ تم إرسال ${amount} نجمة للمعالجة!`, 'success');
+        
+        saveOrder({
+            type: 'stars',
+            username: username,
+            amount: amount,
+            tonAmount: tonAmount,
+            orderId: orderId,
+            status: 'pending',
+            date: getFormattedDate(),
+            transaction: result
+        });
+        
+    } catch (error) {
+        console.error('❌ Transaction error:', error);
+        
+        if (error.message.includes('cancelled') || error.message.includes('rejected')) {
+            showNotification('❌ تم إلغاء المعاملة من قبل المستخدم', 'error');
+        } else if (error.message.includes('timeout')) {
+            showNotification('❌ انتهت مهلة المعاملة', 'error');
+        } else {
+            showNotification('❌ فشل إتمام المعاملة: ' + error.message, 'error');
         }
     }
 }
@@ -638,38 +626,58 @@ async function handlePremiumPurchase() {
     const planName = selectedPlan.querySelector('span').innerText;
     const orderId = "PRM-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7).toUpperCase();
     
-    showNotification(`🔄 جاري معالجة طلب ${planName}...`, 'success');
+    if (!tonConnect || !selectedWallet) {
+        showNotification('❌ المحفظة غير متصلة. جاري إعادة الاتصال...', 'warning');
+        showWalletSelection();
+        return;
+    }
     
-    if (tonConnect && selectedWallet) {
-        try {
-            const payload = base64Encode(`PREMIUM_PURCHASE:${username}:${planName}:${orderId}:${Date.now()}`);
-            const messages = [{
-                address: RECEIVER_WALLET,
-                amount: toNano(tonAmount),
-                payload: payload
-            }];
-            const validUntil = Math.floor(Date.now() / 1000) + 10 * 60;
-            
-            await tonConnect.sendTransaction({
-                validUntil: validUntil,
-                messages: messages
-            });
-            
-            showNotification(`✅ تم شراء ${planName} بنجاح!`, 'success');
-            
-            saveOrder({
-                type: 'premium',
-                username: username,
-                plan: planName,
-                tonAmount: tonAmount,
-                orderId: orderId,
-                status: 'completed',
-                date: getFormattedDate()
-            });
-            
-        } catch (error) {
-            console.error('Transaction error:', error);
-            showNotification('❌ فشل إتمام المعاملة', 'error');
+    showNotification(`🔄 جاري فتح محفظة ${selectedWallet.device?.appName || 'TON'}...`, 'success');
+    
+    try {
+        const payload = base64Encode(`PREMIUM_PURCHASE:${username}:${planName}:${orderId}:${Date.now()}`);
+        const messages = [{
+            address: RECEIVER_WALLET,
+            amount: toNano(tonAmount),
+            payload: payload
+        }];
+        const validUntil = Math.floor(Date.now() / 1000) + 10 * 60;
+        
+        console.log('📤 Sending transaction:', {
+            validUntil: validUntil,
+            messages: messages,
+            tonAmount: tonAmount
+        });
+        
+        const result = await tonConnect.sendTransaction({
+            validUntil: validUntil,
+            messages: messages
+        });
+        
+        console.log('✅ Transaction result:', result);
+        
+        showNotification(`✅ تم إرسال طلب ${planName} للمعالجة!`, 'success');
+        
+        saveOrder({
+            type: 'premium',
+            username: username,
+            plan: planName,
+            tonAmount: tonAmount,
+            orderId: orderId,
+            status: 'pending',
+            date: getFormattedDate(),
+            transaction: result
+        });
+        
+    } catch (error) {
+        console.error('❌ Transaction error:', error);
+        
+        if (error.message.includes('cancelled') || error.message.includes('rejected')) {
+            showNotification('❌ تم إلغاء المعاملة من قبل المستخدم', 'error');
+        } else if (error.message.includes('timeout')) {
+            showNotification('❌ انتهت مهلة المعاملة', 'error');
+        } else {
+            showNotification('❌ فشل إتمام المعاملة: ' + error.message, 'error');
         }
     }
 }
@@ -686,7 +694,7 @@ function saveOrder(order) {
 }
 
 /* ============================================================
-   Responsive Enhancements
+   Mobile Enhancements
 ============================================================ */
 
 function detectDeviceType() {

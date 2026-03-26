@@ -8,7 +8,7 @@ const mysql = require('mysql2/promise');
 const app = express();
 const PORT = 3000;
 
-// ⚠️ عنوان محفظتك اللي هتستلم عليها الفلوس (استبدله بعنوانك الحقيقي)
+// ⚠️ عنوان محفظتك اللي هتستلم عليها الفلوس
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
 
 // Middleware
@@ -47,7 +47,6 @@ function response(res, success, message, data = null) {
 
 // التحقق من صحة عنوان TON
 function isValidTonAddress(address) {
-    // TON addresses start with EQ or UQ and are 48 characters long
     const tonAddressRegex = /^(EQ|UQ)[a-zA-Z0-9_-]{46}$/;
     return tonAddressRegex.test(address);
 }
@@ -55,59 +54,38 @@ function isValidTonAddress(address) {
 // التحقق من وجود المعاملة على البلوكتشين
 async function verifyTonTransaction(txHash, expectedAmount, recipientAddress) {
     try {
-        // استخدام TON Center API للتحقق من المعاملة
         const tonCenterApi = 'https://toncenter.com/api/v2';
-        
-        // جلب معلومات المعاملة
         const txResponse = await fetch(`${tonCenterApi}/getTransactions?hash=${txHash}&limit=1`);
         const txData = await txResponse.json();
         
         if (!txData.ok || !txData.result || txData.result.length === 0) {
-            return { 
-                valid: false, 
-                reason: 'المعاملة غير موجودة على البلوكتشين' 
-            };
+            return { valid: false, reason: 'المعاملة غير موجودة على البلوكتشين' };
         }
         
         const transaction = txData.result[0];
         
-        // التحقق من حالة المعاملة
         if (transaction.out_msgs && transaction.out_msgs.length > 0) {
             const outMsg = transaction.out_msgs[0];
-            
-            // التحقق من العنوان المستلم
             const txRecipient = outMsg.destination;
+            
             if (txRecipient !== recipientAddress) {
-                return { 
-                    valid: false, 
-                    reason: 'عنوان المستلم غير صحيح' 
-                };
+                return { valid: false, reason: 'عنوان المستلم غير صحيح' };
             }
             
-            // التحقق من المبلغ (بالنانو TON)
             const txAmount = parseInt(outMsg.value);
-            const expectedNanoTon = Math.floor(expectedAmount * 1000000000); // تحويل TON لنانو TON
-            
-            // السماح بفرق 1% بسبب رسوم الشبكة
+            const expectedNanoTon = Math.floor(expectedAmount * 1000000000);
             const tolerance = expectedNanoTon * 0.01;
             
             if (Math.abs(txAmount - expectedNanoTon) > tolerance) {
-                return { 
-                    valid: false, 
-                    reason: `المبلغ غير صحيح. المتوقع: ${expectedAmount} TON، المستلم: ${(txAmount / 1000000000).toFixed(4)} TON` 
-                };
+                return { valid: false, reason: `المبلغ غير صحيح. المتوقع: ${expectedAmount} TON، المستلم: ${(txAmount / 1000000000).toFixed(4)} TON` };
             }
             
-            // التحقق من وقت المعاملة (ما تكونش أقدم من ساعة)
-            const txTime = transaction.utime * 1000; // convert to milliseconds
+            const txTime = transaction.utime * 1000;
             const now = Date.now();
             const oneHour = 60 * 60 * 1000;
             
             if (now - txTime > oneHour) {
-                return { 
-                    valid: false, 
-                    reason: 'المعاملة قديمة جداً (أكثر من ساعة)' 
-                };
+                return { valid: false, reason: 'المعاملة قديمة جداً (أكثر من ساعة)' };
             }
             
             return { 
@@ -121,17 +99,11 @@ async function verifyTonTransaction(txHash, expectedAmount, recipientAddress) {
             };
         }
         
-        return { 
-            valid: false, 
-            reason: 'بيانات المعاملة غير صحيحة' 
-        };
+        return { valid: false, reason: 'بيانات المعاملة غير صحيحة' };
         
     } catch (error) {
         console.error('TON Verification Error:', error);
-        return { 
-            valid: false, 
-            reason: 'خطأ في التحقق من البلوكتشين: ' + error.message 
-        };
+        return { valid: false, reason: 'خطأ في التحقق من البلوكتشين: ' + error.message };
     }
 }
 
@@ -145,7 +117,7 @@ async function isTransactionUsed(txHash) {
         return rows.length > 0;
     } catch (error) {
         console.error('Database Error:', error);
-        return true; // في حالة الخطأ، نعتبرها مستخدمة للأمان
+        return true;
     }
 }
 
@@ -184,7 +156,6 @@ app.post('/api/wallet', async (req, res) => {
         return response(res, false, 'عنوان المحفظة مطلوب');
     }
     
-    // التحقق من صحة عنوان TON
     if (!isValidTonAddress(wallet_address)) {
         return response(res, false, 'عنوان TON غير صحيح. يجب أن يبدأ بـ EQ أو UQ ويكون 48 حرف');
     }
@@ -223,35 +194,28 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// 4. Create Order (Stars) - مع التحقق من الدفع
+// 4. Create Order (Stars)
 app.post('/api/order/stars', async (req, res) => {
-    const { user_id, recipient, amount, ton_amount, tx_hash, sender_wallet } = req.body;
+    const { user_id, recipient, amount, ton_amount, tx_hash } = req.body;
     const orderId = 'STAR_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
     
     if (!user_id || !recipient || !amount) {
         return response(res, false, 'بيانات غير مكتملة');
     }
     
-    // ⚠️ التحقق من الدفع إذا تم إرسال معاملة
     if (tx_hash) {
-        // التحقق من عدم استخدام المعاملة من قبل
         const used = await isTransactionUsed(tx_hash);
         if (used) {
             return response(res, false, 'هذه المعاملة مستخدمة من قبل!');
         }
         
-        // ✅ استخدام عنوان المحفظة الحقيقي
-        const YOUR_WALLET_ADDRESS = RECEIVER_WALLET;
-        
-        // التحقق من المعاملة على البلوكتشين
-        const verification = await verifyTonTransaction(tx_hash, ton_amount, YOUR_WALLET_ADDRESS);
+        const verification = await verifyTonTransaction(tx_hash, ton_amount, RECEIVER_WALLET);
         
         if (!verification.valid) {
             await saveVerificationResult(orderId, tx_hash, 'rejected', { reason: verification.reason });
             return response(res, false, `فشل التحقق: ${verification.reason}`);
         }
         
-        // حفظ نتيجة التحقق الناجح
         await saveVerificationResult(orderId, tx_hash, 'confirmed', verification.transaction);
     }
     
@@ -266,35 +230,28 @@ app.post('/api/order/stars', async (req, res) => {
     }
 });
 
-// 5. Create Order (Premium) - مع التحقق من الدفع
+// 5. Create Order (Premium)
 app.post('/api/order/premium', async (req, res) => {
-    const { user_id, recipient, plan, ton_amount, tx_hash, sender_wallet } = req.body;
+    const { user_id, recipient, plan, ton_amount, tx_hash } = req.body;
     const orderId = 'PRM_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
     
     if (!user_id || !recipient || !plan) {
         return response(res, false, 'بيانات غير مكتملة');
     }
     
-    // ⚠️ التحقق من الدفع إذا تم إرسال معاملة
     if (tx_hash) {
-        // التحقق من عدم استخدام المعاملة من قبل
         const used = await isTransactionUsed(tx_hash);
         if (used) {
             return response(res, false, 'هذه المعاملة مستخدمة من قبل!');
         }
         
-        // ✅ استخدام عنوان المحفظة الحقيقي
-        const YOUR_WALLET_ADDRESS = RECEIVER_WALLET;
-        
-        // التحقق من المعاملة على البلوكتشين
-        const verification = await verifyTonTransaction(tx_hash, ton_amount, YOUR_WALLET_ADDRESS);
+        const verification = await verifyTonTransaction(tx_hash, ton_amount, RECEIVER_WALLET);
         
         if (!verification.valid) {
             await saveVerificationResult(orderId, tx_hash, 'rejected', { reason: verification.reason });
             return response(res, false, `فشل التحقق: ${verification.reason}`);
         }
         
-        // حفظ نتيجة التحقق الناجح
         await saveVerificationResult(orderId, tx_hash, 'confirmed', verification.transaction);
     }
     
@@ -309,7 +266,7 @@ app.post('/api/order/premium', async (req, res) => {
     }
 });
 
-// 6. Verify Payment Manually (للتحقق اليدوي من الدفع)
+// 6. Verify Payment Manually
 app.post('/api/verify-payment', async (req, res) => {
     const { order_id, tx_hash, ton_amount } = req.body;
     
@@ -317,23 +274,18 @@ app.post('/api/verify-payment', async (req, res) => {
         return response(res, false, 'رقم الطلب ومعرف المعاملة مطلوبان');
     }
     
-    // التحقق من عدم استخدام المعاملة من قبل
     const used = await isTransactionUsed(tx_hash);
     if (used) {
         return response(res, false, 'هذه المعاملة مستخدمة من قبل!');
     }
     
-    // ✅ استخدام عنوان المحفظة الحقيقي
-    const YOUR_WALLET_ADDRESS = RECEIVER_WALLET;
-    
-    const verification = await verifyTonTransaction(tx_hash, ton_amount, YOUR_WALLET_ADDRESS);
+    const verification = await verifyTonTransaction(tx_hash, ton_amount, RECEIVER_WALLET);
     
     if (!verification.valid) {
         await saveVerificationResult(order_id, tx_hash, 'rejected', { reason: verification.reason });
         return response(res, false, `فشل التحقق: ${verification.reason}`);
     }
     
-    // تحديث حالة الطلب
     try {
         let [result] = await db.execute(
             'UPDATE stars_orders SET status = "paid", tx_hash = ?, paid_at = NOW() WHERE order_id = ?',

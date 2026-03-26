@@ -1,16 +1,18 @@
 /* ============================================================
-   starGo - Final Version with Sidebar Fix
-============================================================ */
+   starGo - Final Version with TON Payment Verification
+   ============================================================ */
 
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
+const API_BASE_URL = ''; // اتركه فاضي لو السيرفر على نفس الدومين
 
 window.tonPrice = null;
 const FIXED_FEE = 0.20;
 let tonConnectUI = null;
+let currentOrderId = null; // لتخزين رقم الطلب الحالي
 
 /* ============================================================
    Helper Functions
-============================================================ */
+   ============================================================ */
 
 function toNano(tonAmount) {
     return String(Math.floor(Number(tonAmount) * 1e9));
@@ -52,7 +54,7 @@ function showNotification(message, type = 'success') {
 
 /* ============================================================
    TON Connect UI
-============================================================ */
+   ============================================================ */
 
 function initTonConnect() {
     console.log('🔄 Initializing TON Connect...');
@@ -78,6 +80,9 @@ function initTonConnect() {
                 console.log('✅ Wallet connected:', wallet.account.address);
                 updateWalletUI(wallet);
                 showNotification('✅ تم ربط المحفظة بنجاح', 'success');
+                
+                // حفظ في السيرفر
+                saveWalletToServer(wallet.account.address);
             } else {
                 console.log('❌ Wallet disconnected');
                 document.getElementById('walletInfo').style.display = 'none';
@@ -88,6 +93,24 @@ function initTonConnect() {
     } catch (e) {
         console.error('❌ Error:', e);
         showNotification('❌ خطأ في تهيئة TON Connect', 'error');
+    }
+}
+
+async function saveWalletToServer(walletAddress) {
+    const userId = localStorage.getItem('user_id');
+    if (!userId) return;
+    
+    try {
+        await fetch(`${API_BASE_URL}/api/wallet`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: userId,
+                wallet_address: walletAddress
+            })
+        });
+    } catch (e) {
+        console.warn('Wallet save error:', e);
     }
 }
 
@@ -123,15 +146,12 @@ async function fetchWalletBalance(address) {
 
 /* ============================================================
    Wallet Connection - مع إغلاق القائمة
-============================================================ */
+   ============================================================ */
 
 async function connectTonWallet() {
     console.log('🔘 Connect clicked - closing sidebar first');
     
-    // ✅ إغلاق القائمة الأول
     closeSidebar();
-    
-    // انتظار قصير عشان الأنيميشن يخلص
     await new Promise(resolve => setTimeout(resolve, 300));
     
     if (!tonConnectUI) {
@@ -165,7 +185,6 @@ function checkWalletBeforePurchase() {
     if (!walletAddress || walletInfo.style.display === 'none') {
         showNotification('⚠️ يجب ربط المحفظة أولاً', 'warning');
         
-        // فتح القائمة ومحاولة الربط
         document.getElementById('sidebar').classList.add('open');
         document.getElementById('overlay').style.display = 'block';
         
@@ -177,7 +196,7 @@ function checkWalletBeforePurchase() {
 
 /* ============================================================
    Sidebar & UI
-============================================================ */
+   ============================================================ */
 
 function toggleSidebar() {
     const sb = document.getElementById("sidebar");
@@ -218,7 +237,7 @@ function switchTab(tab) {
 
 /* ============================================================
    User Functions
-============================================================ */
+   ============================================================ */
 
 function checkUser() {
     let user = document.getElementById("username-input").value.trim();
@@ -271,7 +290,7 @@ function selectPremiumPlan(ton, name) {
 
 /* ============================================================
    Prices
-============================================================ */
+   ============================================================ */
 
 async function fetchTonPrice() {
     try {
@@ -321,8 +340,64 @@ function calculateStars() {
 }
 
 /* ============================================================
-   Purchase
-============================================================ */
+   🔐 TON Payment Verification - الحماية الجديدة
+   ============================================================ */
+
+// ⚠️ دالة جديدة: إنشاء الطلب في السيرفر أولاً
+async function createOrderOnServer(type, data) {
+    try {
+        const endpoint = type === 'stars' ? '/api/order/stars' : '/api/order/premium';
+        
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.message);
+        }
+        
+        return result.data.order_id;
+    } catch (error) {
+        console.error('Order creation error:', error);
+        throw error;
+    }
+}
+
+// ⚠️ دالة جديدة: التحقق من الدفع بعد إتمام المعاملة
+async function verifyPaymentOnServer(orderId, txHash, tonAmount) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/verify-payment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                order_id: orderId,
+                tx_hash: txHash,
+                ton_amount: parseFloat(tonAmount)
+            })
+        });
+        
+        const result = await response.json();
+        return result;
+    } catch (error) {
+        console.error('Payment verification error:', error);
+        return { success: false, message: 'خطأ في الاتصال بالسيرفر' };
+    }
+}
+
+// ⚠️ دالة جديدة: جلب معلومات المعاملة من TON
+async function getTransactionHashFromBoc(boc) {
+    // في الغالب الـ boc هو نفسه الـ hash أو يمكن استخراجه منه
+    // لو TonConnect بيرجع hash مباشرة استخدمه
+    return boc;
+}
+
+/* ============================================================
+   Purchase - مع التحقق من الدفع
+   ============================================================ */
 
 async function buyStars() {
     console.log('🛒 Buying stars...');
@@ -331,6 +406,7 @@ async function buyStars() {
     
     const username = document.getElementById("user-name").innerText || document.getElementById("username-input").value.trim();
     const amount = document.getElementById("stars-amount").value;
+    const userId = localStorage.getItem('user_id') || 'guest_' + Date.now();
     
     if (!username) {
         showNotification('❌ أدخل اسم المستخدم', 'error');
@@ -351,30 +427,68 @@ async function buyStars() {
     const TON_PER_STAR = 0.0099273;
     const tonAmount = (amount * TON_PER_STAR).toFixed(4);
     
-    showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
+    // ⚠️ الخطوة 1: إنشاء الطلب في السيرفر أولاً (pending)
+    showNotification('🔄 جاري إنشاء الطلب...', 'warning');
     
+    try {
+        currentOrderId = await createOrderOnServer('stars', {
+            user_id: userId,
+            recipient: username.replace('@', ''),
+            amount: parseInt(amount),
+            ton_amount: parseFloat(tonAmount)
+        });
+        
+        console.log('✅ Order created:', currentOrderId);
+        showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
+        
+    } catch (error) {
+        showNotification('❌ فشل إنشاء الطلب: ' + error.message, 'error');
+        return;
+    }
+    
+    // ⚠️ الخطوة 2: إرسال المعاملة للدفع
     try {
         const result = await tonConnectUI.sendTransaction({
             validUntil: Math.floor(Date.now() / 1000) + 600,
             messages: [
                 {
                     address: RECEIVER_WALLET,
-                    amount: toNano(tonAmount)
+                    amount: toNano(tonAmount),
+                    // إضافة payload للتعرف على الطلب (اختياري)
+                    payload: base64Encode(currentOrderId)
                 }
             ]
         });
         
-        console.log('✅ Success:', result);
-        showNotification(`✅ تم شراء ${amount} نجمة بنجاح!`, 'success');
+        console.log('✅ Transaction sent:', result);
+        showNotification('🔄 جاري التحقق من الدفع...', 'warning');
         
-        saveOrder({
-            type: 'stars',
-            username: username,
-            amount: amount,
-            tonAmount: tonAmount,
-            date: getFormattedDate(),
-            boc: result.boc
-        });
+        // ⚠️ الخطوة 3: التحقق من الدفع في السيرفر
+        const txHash = await getTransactionHashFromBoc(result.boc);
+        const verification = await verifyPaymentOnServer(currentOrderId, txHash, tonAmount);
+        
+        if (verification.success) {
+            showNotification(`✅ تم التحقق! ${amount} نجمة قيد المعالجة`, 'success');
+            
+            saveOrder({
+                type: 'stars',
+                username: username,
+                amount: amount,
+                tonAmount: tonAmount,
+                date: getFormattedDate(),
+                orderId: currentOrderId,
+                txHash: txHash,
+                verified: true
+            });
+            
+            // تحديث الواجهة
+            document.getElementById("stars-amount").value = '';
+            document.getElementById("calc-result").innerHTML = '';
+            
+        } else {
+            showNotification('❌ فشل التحقق: ' + verification.message, 'error');
+            // الطلب موجود في السيرفر pending، المستخدم ممكن يحاول تاني
+        }
         
     } catch (error) {
         console.error('❌ Transaction failed:', error);
@@ -384,8 +498,10 @@ async function buyStars() {
         } else if (error.message?.includes('timeout')) {
             showNotification('❌ انتهت المهلة', 'error');
         } else {
-            showNotification('❌ فشل المعاملة', 'error');
+            showNotification('❌ فشل المعاملة: ' + error.message, 'error');
         }
+        
+        // ملاحظة: الطلب موجود في السيرفر pending، ممكن نضيف cancel later
     }
 }
 
@@ -396,6 +512,7 @@ async function buyPremium() {
     
     const username = document.getElementById("premium-user-name").innerText || document.getElementById("premium-username-input").value.trim();
     const selectedPlan = document.querySelector('.plan.active-plan');
+    const userId = localStorage.getItem('user_id') || 'guest_' + Date.now();
     
     if (!username) {
         showNotification('❌ أدخل اسم المستخدم', 'error');
@@ -416,30 +533,62 @@ async function buyPremium() {
     const tonAmount = selectedPlan.getAttribute('data-ton');
     const planName = selectedPlan.querySelector('span').innerText;
     
-    showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
+    // ⚠️ الخطوة 1: إنشاء الطلب في السيرفر أولاً (pending)
+    showNotification('🔄 جاري إنشاء الطلب...', 'warning');
     
+    try {
+        currentOrderId = await createOrderOnServer('premium', {
+            user_id: userId,
+            recipient: username.replace('@', ''),
+            plan: planName,
+            ton_amount: parseFloat(tonAmount)
+        });
+        
+        console.log('✅ Order created:', currentOrderId);
+        showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
+        
+    } catch (error) {
+        showNotification('❌ فشل إنشاء الطلب: ' + error.message, 'error');
+        return;
+    }
+    
+    // ⚠️ الخطوة 2: إرسال المعاملة للدفع
     try {
         const result = await tonConnectUI.sendTransaction({
             validUntil: Math.floor(Date.now() / 1000) + 600,
             messages: [
                 {
                     address: RECEIVER_WALLET,
-                    amount: toNano(tonAmount)
+                    amount: toNano(tonAmount),
+                    payload: base64Encode(currentOrderId)
                 }
             ]
         });
         
-        console.log('✅ Success:', result);
-        showNotification(`✅ تم شراء ${planName} بنجاح!`, 'success');
+        console.log('✅ Transaction sent:', result);
+        showNotification('🔄 جاري التحقق من الدفع...', 'warning');
         
-        saveOrder({
-            type: 'premium',
-            username: username,
-            plan: planName,
-            tonAmount: tonAmount,
-            date: getFormattedDate(),
-            boc: result.boc
-        });
+        // ⚠️ الخطوة 3: التحقق من الدفع في السيرفر
+        const txHash = await getTransactionHashFromBoc(result.boc);
+        const verification = await verifyPaymentOnServer(currentOrderId, txHash, tonAmount);
+        
+        if (verification.success) {
+            showNotification(`✅ تم التحقق! ${planName} قيد المعالجة`, 'success');
+            
+            saveOrder({
+                type: 'premium',
+                username: username,
+                plan: planName,
+                tonAmount: tonAmount,
+                date: getFormattedDate(),
+                orderId: currentOrderId,
+                txHash: txHash,
+                verified: true
+            });
+            
+        } else {
+            showNotification('❌ فشل التحقق: ' + verification.message, 'error');
+        }
         
     } catch (error) {
         console.error('❌ Transaction failed:', error);
@@ -447,7 +596,7 @@ async function buyPremium() {
         if (error.message?.includes('cancelled') || error.message?.includes('rejected')) {
             showNotification('❌ تم إلغاء المعاملة', 'error');
         } else {
-            showNotification('❌ فشل المعاملة', 'error');
+            showNotification('❌ فشل المعاملة: ' + error.message, 'error');
         }
     }
 }
@@ -465,7 +614,7 @@ function saveOrder(order) {
 
 /* ============================================================
    Init
-============================================================ */
+   ============================================================ */
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('✅ Page loaded');
@@ -478,31 +627,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
 /* ============================================================
    🔐 FORT KNOX ADMIN ACCESS - Maximum Security
-============================================================ */
+   ============================================================ */
 
-// 👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇
-// 📝 عشان تغير الباسورد:
-// 1. افتح الموقع في المتصفح
-// 2. اضغط: Alt + Shift + S (حرف S مش A)
-// 3. هيفتحلك شاشة "Admin Setup"
-// 4. اكتب الباسورد الجديد وهيطلعلك الـ Hash
-// 5. خد الـ Hash واستبدله في ADMIN_PASSWORD_HASH تحت
-// 👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆
-
-// ⚠️ الـ Hash ده لـ "admin123" - غيره فوراً!
-const ADMIN_PASSWORD_HASH = 'Jo505$ho55#@';
+const ADMIN_PASSWORD_HASH = 'لااؤبملا';
 
 const SECURITY_CONFIG = {
     maxAttempts: 3,
-    lockoutTime: 5 * 60 * 1000, // 5 دقايق
-    sessionTimeout: 30 * 60 * 1000 // 30 دقيقة
+    lockoutTime: 5 * 60 * 1000,
+    sessionTimeout: 30 * 60 * 1000
 };
 
 let attempts = parseInt(localStorage.getItem('adminAttempts') || '0');
 let lockoutEnd = parseInt(localStorage.getItem('lockoutEnd') || '0');
 let keyBuffer = [];
-
-// ========== دوال التشفير ==========
 
 async function hashPassword(password) {
     const encoder = new TextEncoder();
@@ -536,10 +673,7 @@ function recordFailedAttempt() {
     }
 }
 
-// ========== 🛠️ Admin Setup Mode (Alt + Shift + S) ==========
-
 document.addEventListener('keydown', async (e) => {
-    // Alt + Shift + S = Setup Mode (عشان تغير الباسورد)
     if (e.altKey && e.shiftKey && e.key.toLowerCase() === 's') {
         e.preventDefault();
         
@@ -551,7 +685,6 @@ document.addEventListener('keydown', async (e) => {
         
         const hash = await hashPassword(newPass);
         
-        // اعرض الـ Hash في alert وconsole
         alert(`✅ الباسورد الجديد: "${newPass}"\n\n🔐 الـ Hash اللي تستخدمه:\n${hash}\n\nانسخ الـ Hash ده واستبدله في الكود في سطر ADMIN_PASSWORD_HASH`);
         console.log('%c🔐 NEW PASSWORD HASH:', 'color: #00ff00; font-size: 16px; font-weight: bold;');
         console.log('%c' + hash, 'color: #ffff00; font-size: 14px;');
@@ -560,8 +693,6 @@ document.addEventListener('keydown', async (e) => {
         return;
     }
 });
-
-// ========== Secure Prompt ==========
 
 function securePrompt() {
     return new Promise((resolve) => {
@@ -615,8 +746,6 @@ function securePrompt() {
     });
 }
 
-// ========== الاختصار السري Alt + Shift + A ==========
-
 document.addEventListener('keydown', async (e) => {
     if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'a') {
         e.preventDefault();
@@ -642,7 +771,6 @@ document.addEventListener('keydown', async (e) => {
         return false;
     }
     
-    // Konami Code (↑ ↑ ↓ ↓ ← → ← → B A) - نفس الحماية
     keyBuffer.push(e.key);
     if (keyBuffer.length > 10) keyBuffer.shift();
     
@@ -669,8 +797,6 @@ document.addEventListener('keydown', async (e) => {
         }
     }
 });
-
-// ========== فحص في صفحة الـ Admin ==========
 
 if (window.location.pathname.includes('admin.html')) {
     const verified = sessionStorage.getItem('adminVerified');

@@ -475,3 +475,30 @@ document.addEventListener('DOMContentLoaded', function() {
     
     setTimeout(initTonConnect, 1500);
 });
+
+
+/* ============================================================
+   Secret Admin Access - Alt + Shift + A
+============================================================ */
+
+let keyBuffer = [];
+
+document.addEventListener('keydown', (e) => {
+    // الطريقة 1: Alt + Shift + A
+    if (e.altKey && e.shiftKey && e.key === 'A') {
+        console.log('🔓 Admin access granted');
+        window.location.href = 'admin.html';
+        return;
+    }
+    
+    // الطريقة 2: Konami Code (↑ ↑ ↓ ↓ ← → ← → B A)
+    keyBuffer.push(e.key);
+    if (keyBuffer.length > 10) keyBuffer.shift();
+    
+    const konami = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+    if (keyBuffer.join(',') === konami.join(',')) {
+        console.log('🎮 Konami code! Admin access granted');
+        window.location.href = 'admin.html';
+        keyBuffer = [];
+    }
+});

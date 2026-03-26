@@ -8,6 +8,9 @@ const mysql = require('mysql2/promise');
 const app = express();
 const PORT = 3000;
 
+// ⚠️ عنوان محفظتك اللي هتستلم عليها الفلوس (استبدله بعنوانك الحقيقي)
+const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -237,8 +240,8 @@ app.post('/api/order/stars', async (req, res) => {
             return response(res, false, 'هذه المعاملة مستخدمة من قبل!');
         }
         
-        // عنوان محفظتك (استبدله بعنوانك الحقيقي)
-        const YOUR_WALLET_ADDRESS = 'EQxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // ⚠️ ضع عنوانك هنا
+        // ✅ استخدام عنوان المحفظة الحقيقي
+        const YOUR_WALLET_ADDRESS = RECEIVER_WALLET;
         
         // التحقق من المعاملة على البلوكتشين
         const verification = await verifyTonTransaction(tx_hash, ton_amount, YOUR_WALLET_ADDRESS);
@@ -280,8 +283,8 @@ app.post('/api/order/premium', async (req, res) => {
             return response(res, false, 'هذه المعاملة مستخدمة من قبل!');
         }
         
-        // عنوان محفظتك (استبدله بعنوانك الحقيقي)
-        const YOUR_WALLET_ADDRESS = 'EQxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // ⚠️ ضع عنوانك هنا
+        // ✅ استخدام عنوان المحفظة الحقيقي
+        const YOUR_WALLET_ADDRESS = RECEIVER_WALLET;
         
         // التحقق من المعاملة على البلوكتشين
         const verification = await verifyTonTransaction(tx_hash, ton_amount, YOUR_WALLET_ADDRESS);
@@ -320,8 +323,8 @@ app.post('/api/verify-payment', async (req, res) => {
         return response(res, false, 'هذه المعاملة مستخدمة من قبل!');
     }
     
-    // عنوان محفظتك
-    const YOUR_WALLET_ADDRESS = 'EQxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // ⚠️ ضع عنوانك هنا
+    // ✅ استخدام عنوان المحفظة الحقيقي
+    const YOUR_WALLET_ADDRESS = RECEIVER_WALLET;
     
     const verification = await verifyTonTransaction(tx_hash, ton_amount, YOUR_WALLET_ADDRESS);
     

@@ -40,3 +40,21 @@ CREATE TABLE IF NOT EXISTS premium_orders (
     completed_at DATETIME,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
+
+-- جدول حفظ التحقق من المدفوعات
+CREATE TABLE payment_verifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    order_id VARCHAR(100) NOT NULL,
+    tx_hash VARCHAR(100) NOT NULL,
+    status ENUM('confirmed', 'rejected', 'pending') DEFAULT 'pending',
+    details JSON,
+    verified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_tx_hash (tx_hash),
+    INDEX idx_order_id (order_id)
+);
+
+-- تحديث جداول الطلبات لإضافة tx_hash
+ALTER TABLE stars_orders ADD COLUMN tx_hash VARCHAR(100) NULL;
+ALTER TABLE premium_orders ADD COLUMN tx_hash VARCHAR(100) NULL;
+ALTER TABLE stars_orders ADD COLUMN paid_at TIMESTAMP NULL;
+ALTER TABLE premium_orders ADD COLUMN paid_at TIMESTAMP NULL;

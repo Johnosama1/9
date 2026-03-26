@@ -3,12 +3,12 @@
    ============================================================ */
 
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
-const API_BASE_URL = ''; // اتركه فاضي لو السيرفر على نفس الدومين
+const API_BASE_URL = '';
 
 window.tonPrice = null;
 const FIXED_FEE = 0.20;
 let tonConnectUI = null;
-let currentOrderId = null; // لتخزين رقم الطلب الحالي
+let currentOrderId = null;
 
 /* ============================================================
    Helper Functions
@@ -80,8 +80,6 @@ function initTonConnect() {
                 console.log('✅ Wallet connected:', wallet.account.address);
                 updateWalletUI(wallet);
                 showNotification('✅ تم ربط المحفظة بنجاح', 'success');
-                
-                // حفظ في السيرفر
                 saveWalletToServer(wallet.account.address);
             } else {
                 console.log('❌ Wallet disconnected');
@@ -145,7 +143,7 @@ async function fetchWalletBalance(address) {
 }
 
 /* ============================================================
-   Wallet Connection - مع إغلاق القائمة
+   Wallet Connection
    ============================================================ */
 
 async function connectTonWallet() {
@@ -340,7 +338,7 @@ function calculateStars() {
 }
 
 /* ============================================================
-   🔐 TON Payment Verification - الحماية الجديدة
+   🔐 TON Payment Verification - دوال جديدة للحماية
    ============================================================ */
 
 // ⚠️ دالة جديدة: إنشاء الطلب في السيرفر أولاً
@@ -388,15 +386,13 @@ async function verifyPaymentOnServer(orderId, txHash, tonAmount) {
     }
 }
 
-// ⚠️ دالة جديدة: جلب معلومات المعاملة من TON
+// ⚠️ دالة جديدة: استخراج transaction hash من النتيجة
 async function getTransactionHashFromBoc(boc) {
-    // في الغالب الـ boc هو نفسه الـ hash أو يمكن استخراجه منه
-    // لو TonConnect بيرجع hash مباشرة استخدمه
     return boc;
 }
 
 /* ============================================================
-   Purchase - مع التحقق من الدفع
+   Purchase - مع التحقق من الدفع (معدل)
    ============================================================ */
 
 async function buyStars() {
@@ -454,7 +450,6 @@ async function buyStars() {
                 {
                     address: RECEIVER_WALLET,
                     amount: toNano(tonAmount),
-                    // إضافة payload للتعرف على الطلب (اختياري)
                     payload: base64Encode(currentOrderId)
                 }
             ]
@@ -481,13 +476,11 @@ async function buyStars() {
                 verified: true
             });
             
-            // تحديث الواجهة
             document.getElementById("stars-amount").value = '';
             document.getElementById("calc-result").innerHTML = '';
             
         } else {
             showNotification('❌ فشل التحقق: ' + verification.message, 'error');
-            // الطلب موجود في السيرفر pending، المستخدم ممكن يحاول تاني
         }
         
     } catch (error) {
@@ -500,8 +493,6 @@ async function buyStars() {
         } else {
             showNotification('❌ فشل المعاملة: ' + error.message, 'error');
         }
-        
-        // ملاحظة: الطلب موجود في السيرفر pending، ممكن نضيف cancel later
     }
 }
 

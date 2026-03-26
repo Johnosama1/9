@@ -1,6 +1,5 @@
 /* ============================================================
-   starGo - Final Fixed Version
-   TON Connect UI - Working Transaction
+   starGo - Final Version with Sidebar Fix
 ============================================================ */
 
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
@@ -52,7 +51,7 @@ function showNotification(message, type = 'success') {
 }
 
 /* ============================================================
-   TON Connect UI - Initialization
+   TON Connect UI
 ============================================================ */
 
 function initTonConnect() {
@@ -65,7 +64,6 @@ function initTonConnect() {
     }
     
     try {
-        // ✅ استخدام الرابط الصحيح
         const manifestUrl = 'https://' + window.location.hostname + '/tonconnect-manifest.json';
         console.log('🔗 Manifest:', manifestUrl);
         
@@ -75,7 +73,6 @@ function initTonConnect() {
         
         console.log('✅ TON Connect initialized');
         
-        // الاستماع للتغييرات
         tonConnectUI.onStatusChange((wallet) => {
             if (wallet) {
                 console.log('✅ Wallet connected:', wallet.account.address);
@@ -107,7 +104,6 @@ function updateWalletUI(wallet) {
     document.getElementById('walletInfo').style.display = 'block';
     document.getElementById('connectTonWalletBtn').style.display = 'none';
     
-    // جلب الرصيد
     fetchWalletBalance(wallet.account.address);
 }
 
@@ -121,16 +117,22 @@ async function fetchWalletBalance(address) {
             document.getElementById('walletBalance').style.display = 'flex';
         }
     } catch (e) {
-        console.warn('Could not fetch balance:', e);
+        console.warn('Balance fetch error:', e);
     }
 }
 
 /* ============================================================
-   Wallet Connection
+   Wallet Connection - مع إغلاق القائمة
 ============================================================ */
 
 async function connectTonWallet() {
-    console.log('🔘 Connect clicked');
+    console.log('🔘 Connect clicked - closing sidebar first');
+    
+    // ✅ إغلاق القائمة الأول
+    closeSidebar();
+    
+    // انتظار قصير عشان الأنيميشن يخلص
+    await new Promise(resolve => setTimeout(resolve, 300));
     
     if (!tonConnectUI) {
         showNotification('🔄 جاري التحميل...', 'warning');
@@ -163,6 +165,7 @@ function checkWalletBeforePurchase() {
     if (!walletAddress || walletInfo.style.display === 'none') {
         showNotification('⚠️ يجب ربط المحفظة أولاً', 'warning');
         
+        // فتح القائمة ومحاولة الربط
         document.getElementById('sidebar').classList.add('open');
         document.getElementById('overlay').style.display = 'block';
         
@@ -173,7 +176,7 @@ function checkWalletBeforePurchase() {
 }
 
 /* ============================================================
-   UI Functions
+   Sidebar & UI
 ============================================================ */
 
 function toggleSidebar() {
@@ -181,17 +184,23 @@ function toggleSidebar() {
     const ov = document.getElementById("overlay");
     
     if (sb.classList.contains("open")) {
-        sb.classList.remove("open");
-        ov.style.display = "none";
+        closeSidebar();
     } else {
         sb.classList.add("open");
         ov.style.display = "block";
+        document.body.style.overflow = 'hidden';
     }
 }
 
 function closeSidebar() {
-    document.getElementById("sidebar").classList.remove("open");
-    document.getElementById("overlay").style.display = "none";
+    const sb = document.getElementById("sidebar");
+    const ov = document.getElementById("overlay");
+    
+    sb.classList.remove("open");
+    ov.style.display = "none";
+    document.body.style.overflow = '';
+    
+    console.log('✅ Sidebar closed');
 }
 
 function switchTab(tab) {
@@ -208,7 +217,7 @@ function switchTab(tab) {
 }
 
 /* ============================================================
-   User & Package Selection
+   User Functions
 ============================================================ */
 
 function checkUser() {
@@ -261,7 +270,7 @@ function selectPremiumPlan(ton, name) {
 }
 
 /* ============================================================
-   Price Calculations
+   Prices
 ============================================================ */
 
 async function fetchTonPrice() {
@@ -280,7 +289,6 @@ async function fetchTonPrice() {
 function updatePrices() {
     if (!window.tonPrice) return;
     
-    // Update packages
     document.querySelectorAll(".package").forEach(pkg => {
         const ton = parseFloat(pkg.getAttribute("data-ton"));
         const usd = (ton * window.tonPrice + FIXED_FEE).toFixed(2);
@@ -288,7 +296,6 @@ function updatePrices() {
         if (el) el.innerText = "~ $" + usd;
     });
     
-    // Update premium
     document.querySelectorAll(".plan").forEach(plan => {
         const ton = parseFloat(plan.getAttribute("data-ton"));
         const usd = (ton * window.tonPrice + FIXED_FEE).toFixed(2);
@@ -314,7 +321,7 @@ function calculateStars() {
 }
 
 /* ============================================================
-   PURCHASE - FIXED VERSION
+   Purchase
 ============================================================ */
 
 async function buyStars() {
@@ -335,7 +342,6 @@ async function buyStars() {
         return;
     }
     
-    // ✅ التحقق من الاتصال
     if (!tonConnectUI || !tonConnectUI.wallet) {
         showNotification('❌ المحفظة غير متصلة', 'error');
         connectTonWallet();
@@ -348,14 +354,12 @@ async function buyStars() {
     showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
     
     try {
-        // ✅ الطريقة الصحيحة لـ TON Connect UI
         const result = await tonConnectUI.sendTransaction({
-            validUntil: Math.floor(Date.now() / 1000) + 600, // 10 دقايق
+            validUntil: Math.floor(Date.now() / 1000) + 600,
             messages: [
                 {
                     address: RECEIVER_WALLET,
                     amount: toNano(tonAmount)
-                    // ❌ مفيش payload عشان ميسببش مشاكل
                 }
             ]
         });
@@ -363,7 +367,6 @@ async function buyStars() {
         console.log('✅ Success:', result);
         showNotification(`✅ تم شراء ${amount} نجمة بنجاح!`, 'success');
         
-        // حفظ الطلب
         saveOrder({
             type: 'stars',
             username: username,
@@ -381,7 +384,7 @@ async function buyStars() {
         } else if (error.message?.includes('timeout')) {
             showNotification('❌ انتهت المهلة', 'error');
         } else {
-            showNotification('❌ فشل المعاملة: ' + (error.message || 'خطأ غير معروف'), 'error');
+            showNotification('❌ فشل المعاملة', 'error');
         }
     }
 }
@@ -461,7 +464,7 @@ function saveOrder(order) {
 }
 
 /* ============================================================
-   Initialization
+   Init
 ============================================================ */
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -470,6 +473,5 @@ document.addEventListener('DOMContentLoaded', function() {
     fetchTonPrice();
     setInterval(fetchTonPrice, 30000);
     
-    // تأخير تهيئة TON Connect
     setTimeout(initTonConnect, 1500);
 });

@@ -476,29 +476,206 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(initTonConnect, 1500);
 });
 
-
 /* ============================================================
-   Secret Admin Access - Alt + Shift + A
+   🔐 FORT KNOX ADMIN ACCESS - Maximum Security
 ============================================================ */
 
+// 👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇👇
+// 📝 عشان تغير الباسورد:
+// 1. افتح الموقع في المتصفح
+// 2. اضغط: Alt + Shift + S (حرف S مش A)
+// 3. هيفتحلك شاشة "Admin Setup"
+// 4. اكتب الباسورد الجديد وهيطلعلك الـ Hash
+// 5. خد الـ Hash واستبدله في ADMIN_PASSWORD_HASH تحت
+// 👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆👆
+
+// ⚠️ الـ Hash ده لـ "admin123" - غيره فوراً!
+const ADMIN_PASSWORD_HASH = 'Jo505$ho55#@';
+
+const SECURITY_CONFIG = {
+    maxAttempts: 3,
+    lockoutTime: 5 * 60 * 1000, // 5 دقايق
+    sessionTimeout: 30 * 60 * 1000 // 30 دقيقة
+};
+
+let attempts = parseInt(localStorage.getItem('adminAttempts') || '0');
+let lockoutEnd = parseInt(localStorage.getItem('lockoutEnd') || '0');
 let keyBuffer = [];
 
-document.addEventListener('keydown', (e) => {
-    // الطريقة 1: Alt + Shift + A
-    if (e.altKey && e.shiftKey && e.key === 'A') {
-        console.log('🔓 Admin access granted');
-        window.location.href = 'admin.html';
+// ========== دوال التشفير ==========
+
+async function hashPassword(password) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function isLocked() {
+    if (Date.now() < lockoutEnd) {
+        const mins = Math.ceil((lockoutEnd - Date.now()) / 60000);
+        alert(`⛔ محظور! جرب بعد ${mins} دقيقة`);
+        return true;
+    }
+    if (lockoutEnd > 0 && Date.now() > lockoutEnd) {
+        attempts = 0;
+        localStorage.setItem('adminAttempts', '0');
+        localStorage.setItem('lockoutEnd', '0');
+    }
+    return false;
+}
+
+function recordFailedAttempt() {
+    attempts++;
+    localStorage.setItem('adminAttempts', attempts.toString());
+    if (attempts >= SECURITY_CONFIG.maxAttempts) {
+        lockoutEnd = Date.now() + SECURITY_CONFIG.lockoutTime;
+        localStorage.setItem('lockoutEnd', lockoutEnd.toString());
+        alert('🚫 3 محاولات فاشلة! محظور 5 دقايق');
+    }
+}
+
+// ========== 🛠️ Admin Setup Mode (Alt + Shift + S) ==========
+
+document.addEventListener('keydown', async (e) => {
+    // Alt + Shift + S = Setup Mode (عشان تغير الباسورد)
+    if (e.altKey && e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        
+        const newPass = prompt('🔧 Admin Setup Mode\n\nاكتب الباسورد الجديد اللي عايزه:');
+        if (!newPass || newPass.length < 4) {
+            alert('❌ لازم 4 أحرف على الأقل!');
+            return;
+        }
+        
+        const hash = await hashPassword(newPass);
+        
+        // اعرض الـ Hash في alert وconsole
+        alert(`✅ الباسورد الجديد: "${newPass}"\n\n🔐 الـ Hash اللي تستخدمه:\n${hash}\n\nانسخ الـ Hash ده واستبدله في الكود في سطر ADMIN_PASSWORD_HASH`);
+        console.log('%c🔐 NEW PASSWORD HASH:', 'color: #00ff00; font-size: 16px; font-weight: bold;');
+        console.log('%c' + hash, 'color: #ffff00; font-size: 14px;');
+        console.log('%cاستبدل ده في الكود في ADMIN_PASSWORD_HASH', 'color: #ff0000; font-size: 12px;');
+        
         return;
     }
+});
+
+// ========== Secure Prompt ==========
+
+function securePrompt() {
+    return new Promise((resolve) => {
+        const modal = document.createElement('div');
+        modal.innerHTML = `
+            <div style="position:fixed; top:0; left:0; width:100%; height:100%; 
+                        background:rgba(0,0,0,0.95); z-index:99999; display:flex; 
+                        align-items:center; justify-content:center;">
+                <div style="background:#1a1a1a; padding:30px; border-radius:10px; 
+                            border:2px solid #ff3333; text-align:center; min-width:300px;">
+                    <h3 style="color:#ff3333; margin:0 0 20px;">🔐 ADMIN ACCESS</h3>
+                    <input type="password" id="adminPassInput" placeholder="Enter password..." 
+                           style="padding:12px; width:100%; margin-bottom:15px; 
+                                  background:#000; color:#0f0; border:1px solid #333; font-size:16px;">
+                    <div>
+                        <button id="adminSubmit" style="padding:10px 25px; 
+                                background:#ff3333; color:white; border:none; 
+                                cursor:pointer; margin-right:10px; font-size:14px;">دخول</button>
+                        <button id="adminCancel" style="padding:10px 25px; 
+                                background:#333; color:white; border:none; 
+                                cursor:pointer; font-size:14px;">إلغاء</button>
+                    </div>
+                    <p style="color:#666; font-size:11px; margin-top:15px;">
+                        محاولات فاشلة: ${attempts}/${SECURITY_CONFIG.maxAttempts}
+                    </p>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        const input = modal.querySelector('#adminPassInput');
+        input.focus();
+        
+        modal.querySelector('#adminSubmit').onclick = async () => {
+            const val = input.value;
+            modal.remove();
+            resolve(val);
+        };
+        
+        modal.querySelector('#adminCancel').onclick = () => {
+            modal.remove();
+            resolve(null);
+        };
+        
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                modal.querySelector('#adminSubmit').click();
+            }
+        });
+    });
+}
+
+// ========== الاختصار السري Alt + Shift + A ==========
+
+document.addEventListener('keydown', async (e) => {
+    if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        if (isLocked()) return;
+        
+        const password = await securePrompt();
+        if (!password) return;
+        
+        const inputHash = await hashPassword(password);
+        
+        if (inputHash === ADMIN_PASSWORD_HASH) {
+            attempts = 0;
+            localStorage.setItem('adminAttempts', '0');
+            sessionStorage.setItem('adminVerified', Date.now().toString());
+            window.location.replace('admin.html');
+        } else {
+            recordFailedAttempt();
+            const remaining = SECURITY_CONFIG.maxAttempts - attempts;
+            alert(`❌ غلط! ${remaining} محاولات باقية`);
+        }
+        return false;
+    }
     
-    // الطريقة 2: Konami Code (↑ ↑ ↓ ↓ ← → ← → B A)
+    // Konami Code (↑ ↑ ↓ ↓ ← → ← → B A) - نفس الحماية
     keyBuffer.push(e.key);
     if (keyBuffer.length > 10) keyBuffer.shift();
     
     const konami = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
     if (keyBuffer.join(',') === konami.join(',')) {
-        console.log('🎮 Konami code! Admin access granted');
-        window.location.href = 'admin.html';
+        e.preventDefault();
         keyBuffer = [];
+        
+        if (isLocked()) return;
+        
+        const password = await securePrompt();
+        if (!password) return;
+        
+        const inputHash = await hashPassword(password);
+        
+        if (inputHash === ADMIN_PASSWORD_HASH) {
+            attempts = 0;
+            localStorage.setItem('adminAttempts', '0');
+            sessionStorage.setItem('adminVerified', Date.now().toString());
+            window.location.replace('admin.html');
+        } else {
+            recordFailedAttempt();
+            alert(`❌ غلط! ${SECURITY_CONFIG.maxAttempts - attempts} محاولات باقية`);
+        }
     }
 });
+
+// ========== فحص في صفحة الـ Admin ==========
+
+if (window.location.pathname.includes('admin.html')) {
+    const verified = sessionStorage.getItem('adminVerified');
+    if (!verified || (Date.now() - parseInt(verified)) > SECURITY_CONFIG.sessionTimeout) {
+        alert('⛔ Session expired!');
+        window.location.replace('index.html');
+    }
+}

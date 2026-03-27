@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS premium_orders (
 );
 
 -- ============================================
--- جدول حفظ التحقق من المدفوعات
+-- جدول حفظ التحقق من المدفوعات (مكافحة العملات الوهمية)
 -- ============================================
 CREATE TABLE IF NOT EXISTS payment_verifications (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -65,3 +65,14 @@ CREATE TABLE IF NOT EXISTS payment_verifications (
     INDEX idx_tx_hash (tx_hash),
     INDEX idx_order_id (order_id)
 );
+
+-- ============================================
+-- إضافة حقل tx_hash لو مش موجود (للتحديث)
+-- ============================================
+ALTER TABLE stars_orders 
+ADD COLUMN IF NOT EXISTS tx_hash VARCHAR(100) NULL AFTER status,
+ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP NULL AFTER tx_hash;
+
+ALTER TABLE premium_orders 
+ADD COLUMN IF NOT EXISTS tx_hash VARCHAR(100) NULL AFTER status,
+ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP NULL AFTER tx_hash;

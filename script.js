@@ -3,7 +3,7 @@
 ============================================================ */
 
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
-const API_URL = 'http://localhost:3000/api'; // غير حسب سيرفرك
+const API_URL = 'https://stargo.vercel.app/api'; // غير حسب سيرفرك
 
 window.tonPrice = null;
 const FIXED_FEE = 0.20;

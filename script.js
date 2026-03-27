@@ -3,12 +3,12 @@
 ============================================================ */
 
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
-const API_URL = 'http://localhost:3000/api'; // غير حسب سيرفرك
+const API_URL = 'http://localhost:3000/api';
 
 window.tonPrice = null;
 const FIXED_FEE = 0.20;
 let tonConnectUI = null;
-let currentOrder = null; // لتخزين بيانات الأوردر الحالي
+let currentOrder = null;
 
 /* ============================================================
    Helper Functions
@@ -124,16 +124,13 @@ async function fetchWalletBalance(address) {
 }
 
 /* ============================================================
-   Wallet Connection - مع إغلاق القائمة
+   Wallet Connection
 ============================================================ */
 
 async function connectTonWallet() {
     console.log('🔘 Connect clicked - closing sidebar first');
     
-    // ✅ إغلاق القائمة الأول
     closeSidebar();
-    
-    // انتظار قصير عشان الأنيميشن يخلص
     await new Promise(resolve => setTimeout(resolve, 300));
     
     if (!tonConnectUI) {
@@ -167,7 +164,6 @@ function checkWalletBeforePurchase() {
     if (!walletAddress || walletInfo.style.display === 'none') {
         showNotification('⚠️ يجب ربط المحفظة أولاً', 'warning');
         
-        // فتح القائمة ومحاولة الربط
         document.getElementById('sidebar').classList.add('open');
         document.getElementById('overlay').style.display = 'block';
         
@@ -326,9 +322,6 @@ function calculateStars() {
    Purchase with Anti-Fake Protection
 ============================================================ */
 
-/**
- * 🔒 إنشاء الأوردر في السيرفر قبل الدفع
- */
 async function createOrder(type, data) {
     try {
         const endpoint = type === 'stars' ? '/order/stars' : '/order/premium';
@@ -346,9 +339,6 @@ async function createOrder(type, data) {
     }
 }
 
-/**
- * 🔒 التحقق من الدفع بعد إرساله (مكافحة العملات الوهمية)
- */
 async function verifyPayment(orderId, txHash, walletAddress, orderType) {
     try {
         showNotification('🔍 جاري التحقق من صحة العملة...', 'warning');
@@ -401,11 +391,11 @@ async function buyStars() {
     const TON_PER_STAR = 0.0099273;
     const tonAmount = (amount * TON_PER_STAR).toFixed(4);
     
-    // 🔒 الخطوة 1: إنشاء الأوردر في السيرفر
+    // إنشاء الأوردر
     showNotification('📝 جاري إنشاء الطلب...', 'warning');
     
     const orderResult = await createOrder('stars', {
-        user_id: 1, // غير حسب نظام تسجيل الدخول عندك
+        user_id: 1,
         recipient: username,
         amount: amount,
         ton_amount: tonAmount,
@@ -420,8 +410,8 @@ async function buyStars() {
     const orderId = orderResult.data.order_id;
     console.log('✅ Order created:', orderId);
     
-    // 🔒 الخطوة 2: فتح المحفظة للدفع
-    showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
+    // فتح المحفظة للدفع
+    showNotification('🔄 جاري فتح المحفظة...', 'success');
     
     try {
         const result = await tonConnectUI.sendTransaction({
@@ -436,19 +426,18 @@ async function buyStars() {
         
         console.log('✅ Transaction sent:', result);
         
-        // 🔒 الخطوة 3: التحقق من الدفع (مكافحة العملات الوهمية)
-        const txHash = result.boc; // أو استخرج الهاش من النتيجة
+        // استخراج TX Hash
+        const txHash = result.boc || result.hash || 'unknown';
         
+        // 🔒 التحقق من الدفع (مكافحة العملات الوهمية)
         const verification = await verifyPayment(orderId, txHash, walletAddress, 'stars');
         
         if (!verification.success) {
-            // ❌ فشل التحقق - عملة وهمية!
             showNotification('🚨 ' + verification.message, 'error');
-            showNotification('⚠️ تم اكتشاف عملة غير صالحة. تم إلغاء الطلب.', 'error');
+            showNotification('⚠️ تم رفض العملة: غير أصلية', 'error');
             return;
         }
         
-        // ✅ نجح التحقق
         showNotification(`✅ تم شراء ${amount} نجمة بنجاح!`, 'success');
         
         saveOrder({
@@ -503,7 +492,7 @@ async function buyPremium() {
     const tonAmount = selectedPlan.getAttribute('data-ton');
     const planName = selectedPlan.querySelector('span').innerText;
     
-    // 🔒 الخطوة 1: إنشاء الأوردر
+    // إنشاء الأوردر
     showNotification('📝 جاري إنشاء الطلب...', 'warning');
     
     const orderResult = await createOrder('premium', {
@@ -521,8 +510,8 @@ async function buyPremium() {
     
     const orderId = orderResult.data.order_id;
     
-    // 🔒 الخطوة 2: فتح المحفظة
-    showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
+    // فتح المحفظة
+    showNotification('🔄 جاري فتح المحفظة...', 'success');
     
     try {
         const result = await tonConnectUI.sendTransaction({
@@ -537,14 +526,14 @@ async function buyPremium() {
         
         console.log('✅ Transaction sent:', result);
         
-        // 🔒 الخطوة 3: التحقق من الدفع
-        const txHash = result.boc;
+        const txHash = result.boc || result.hash || 'unknown';
         
+        // 🔒 التحقق من الدفع
         const verification = await verifyPayment(orderId, txHash, walletAddress, 'premium');
         
         if (!verification.success) {
             showNotification('🚨 ' + verification.message, 'error');
-            showNotification('⚠️ تم اكتشاف عملة غير صالحة. تم إلغاء الطلب.', 'error');
+            showNotification('⚠️ تم رفض العملة: غير أصلية', 'error');
             return;
         }
         

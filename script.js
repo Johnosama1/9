@@ -3,12 +3,16 @@
    ============================================================ */
 
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
-const API_BASE_URL = ''; // اتركه فاضي لو السيرفر على نفس الدومين
+
+// ⚠️ غيّر الرابط ده للرابط بتاعك على Vercel
+const API_BASE_URL = window.location.origin.includes('localhost') 
+    ? 'http://localhost:3000' 
+    : 'https://stargo.vercel.app';
 
 window.tonPrice = null;
 const FIXED_FEE = 0.20;
 let tonConnectUI = null;
-let currentOrderId = null; // لتخزين رقم الطلب الحالي
+let currentOrderId = null;
 
 /* ============================================================
    Helper Functions
@@ -80,8 +84,6 @@ function initTonConnect() {
                 console.log('✅ Wallet connected:', wallet.account.address);
                 updateWalletUI(wallet);
                 showNotification('✅ تم ربط المحفظة بنجاح', 'success');
-                
-                // حفظ في السيرفر
                 saveWalletToServer(wallet.account.address);
             } else {
                 console.log('❌ Wallet disconnected');
@@ -101,7 +103,7 @@ async function saveWalletToServer(walletAddress) {
     if (!userId) return;
     
     try {
-        await fetch(`${API_BASE_URL}/api/wallet`, {
+        const response = await fetch(`${API_BASE_URL}/api/wallet`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -109,6 +111,10 @@ async function saveWalletToServer(walletAddress) {
                 wallet_address: walletAddress
             })
         });
+        
+        if (!response.ok) {
+            console.warn('Wallet save failed:', response.status);
+        }
     } catch (e) {
         console.warn('Wallet save error:', e);
     }
@@ -145,7 +151,7 @@ async function fetchWalletBalance(address) {
 }
 
 /* ============================================================
-   Wallet Connection - مع إغلاق القائمة
+   Wallet Connection
    ============================================================ */
 
 async function connectTonWallet() {
@@ -340,39 +346,75 @@ function calculateStars() {
 }
 
 /* ============================================================
-   🔐 TON Payment Verification - الحماية الجديدة
+   🔐 TON Payment Verification - مع error handling محسن
    ============================================================ */
 
-// ⚠️ دالة جديدة: إنشاء الطلب في السيرفر أولاً
 async function createOrderOnServer(type, data) {
     try {
         const endpoint = type === 'stars' ? '/api/order/stars' : '/api/order/premium';
+        const url = `${API_BASE_URL}${endpoint}`;
         
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        console.log('🔍 Sending to:', url);
+        console.log('📦 Data:', data);
+        
+        const response = await fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
             body: JSON.stringify(data)
         });
         
-        const result = await response.json();
+        console.log('📥 Response status:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ HTTP Error:', response.status, errorText);
+            throw new Error(`HTTP Error: ${response.status} - ${errorText}`);
+        }
+        
+        const text = await response.text();
+        console.log('📄 Raw response length:', text.length);
+        console.log('📄 Raw response:', text.substring(0, 200));
+        
+        if (!text || text.trim() === '') {
+            throw new Error('السيرفر رجع response فاضي');
+        }
+        
+        let result;
+        try {
+            result = JSON.parse(text);
+        } catch (e) {
+            console.error('❌ JSON parse error:', e);
+            console.error('Raw text that failed:', text);
+            throw new Error('السيرفر رجع بيانات مش JSON: ' + text.substring(0, 100));
+        }
         
         if (!result.success) {
-            throw new Error(result.message);
+            throw new Error(result.message || 'خطأ غير معروف من السيرفر');
+        }
+        
+        if (!result.data || !result.data.order_id) {
+            throw new Error('السيرفر لم يرجع order_id');
         }
         
         return result.data.order_id;
+        
     } catch (error) {
-        console.error('Order creation error:', error);
+        console.error('❌ Order creation error:', error);
         throw error;
     }
 }
 
-// ⚠️ دالة جديدة: التحقق من الدفع بعد إتمام المعاملة
 async function verifyPaymentOnServer(orderId, txHash, tonAmount) {
     try {
         const response = await fetch(`${API_BASE_URL}/api/verify-payment`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
             body: JSON.stringify({
                 order_id: orderId,
                 tx_hash: txHash,
@@ -380,18 +422,32 @@ async function verifyPaymentOnServer(orderId, txHash, tonAmount) {
             })
         });
         
-        const result = await response.json();
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP Error: ${response.status} - ${errorText}`);
+        }
+        
+        const text = await response.text();
+        
+        if (!text) {
+            return { success: false, message: 'السيرفر رجع response فاضي' };
+        }
+        
+        let result;
+        try {
+            result = JSON.parse(text);
+        } catch (e) {
+            return { success: false, message: 'رد السيرفر غير صالح' };
+        }
+        
         return result;
     } catch (error) {
         console.error('Payment verification error:', error);
-        return { success: false, message: 'خطأ في الاتصال بالسيرفر' };
+        return { success: false, message: 'خطأ في الاتصال بالسيرفر: ' + error.message };
     }
 }
 
-// ⚠️ دالة جديدة: جلب معلومات المعاملة من TON
 async function getTransactionHashFromBoc(boc) {
-    // في الغالب الـ boc هو نفسه الـ hash أو يمكن استخراجه منه
-    // لو TonConnect بيرجع hash مباشرة استخدمه
     return boc;
 }
 
@@ -427,7 +483,6 @@ async function buyStars() {
     const TON_PER_STAR = 0.0099273;
     const tonAmount = (amount * TON_PER_STAR).toFixed(4);
     
-    // ⚠️ الخطوة 1: إنشاء الطلب في السيرفر أولاً (pending)
     showNotification('🔄 جاري إنشاء الطلب...', 'warning');
     
     try {
@@ -439,14 +494,18 @@ async function buyStars() {
         });
         
         console.log('✅ Order created:', currentOrderId);
-        showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
+        
+        if (!currentOrderId) {
+            throw new Error('لم يتم استلام رقم الطلب');
+        }
+        
+        showNotification('✅ تم إنشاء الطلب، جاري فتح المحفظة...', 'success');
         
     } catch (error) {
         showNotification('❌ فشل إنشاء الطلب: ' + error.message, 'error');
         return;
     }
     
-    // ⚠️ الخطوة 2: إرسال المعاملة للدفع
     try {
         const result = await tonConnectUI.sendTransaction({
             validUntil: Math.floor(Date.now() / 1000) + 600,
@@ -454,7 +513,6 @@ async function buyStars() {
                 {
                     address: RECEIVER_WALLET,
                     amount: toNano(tonAmount),
-                    // إضافة payload للتعرف على الطلب (اختياري)
                     payload: base64Encode(currentOrderId)
                 }
             ]
@@ -463,7 +521,6 @@ async function buyStars() {
         console.log('✅ Transaction sent:', result);
         showNotification('🔄 جاري التحقق من الدفع...', 'warning');
         
-        // ⚠️ الخطوة 3: التحقق من الدفع في السيرفر
         const txHash = await getTransactionHashFromBoc(result.boc);
         const verification = await verifyPaymentOnServer(currentOrderId, txHash, tonAmount);
         
@@ -481,13 +538,11 @@ async function buyStars() {
                 verified: true
             });
             
-            // تحديث الواجهة
             document.getElementById("stars-amount").value = '';
             document.getElementById("calc-result").innerHTML = '';
             
         } else {
-            showNotification('❌ فشل التحقق: ' + verification.message, 'error');
-            // الطلب موجود في السيرفر pending، المستخدم ممكن يحاول تاني
+            showNotification('❌ فشل التحقق: ' + (verification.message || 'خطأ غير معروف'), 'error');
         }
         
     } catch (error) {
@@ -498,10 +553,8 @@ async function buyStars() {
         } else if (error.message?.includes('timeout')) {
             showNotification('❌ انتهت المهلة', 'error');
         } else {
-            showNotification('❌ فشل المعاملة: ' + error.message, 'error');
+            showNotification('❌ فشل المعاملة: ' + (error.message || 'خطأ غير معروف'), 'error');
         }
-        
-        // ملاحظة: الطلب موجود في السيرفر pending، ممكن نضيف cancel later
     }
 }
 
@@ -533,7 +586,6 @@ async function buyPremium() {
     const tonAmount = selectedPlan.getAttribute('data-ton');
     const planName = selectedPlan.querySelector('span').innerText;
     
-    // ⚠️ الخطوة 1: إنشاء الطلب في السيرفر أولاً (pending)
     showNotification('🔄 جاري إنشاء الطلب...', 'warning');
     
     try {
@@ -545,14 +597,18 @@ async function buyPremium() {
         });
         
         console.log('✅ Order created:', currentOrderId);
-        showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
+        
+        if (!currentOrderId) {
+            throw new Error('لم يتم استلام رقم الطلب');
+        }
+        
+        showNotification('✅ تم إنشاء الطلب، جاري فتح المحفظة...', 'success');
         
     } catch (error) {
         showNotification('❌ فشل إنشاء الطلب: ' + error.message, 'error');
         return;
     }
     
-    // ⚠️ الخطوة 2: إرسال المعاملة للدفع
     try {
         const result = await tonConnectUI.sendTransaction({
             validUntil: Math.floor(Date.now() / 1000) + 600,
@@ -568,7 +624,6 @@ async function buyPremium() {
         console.log('✅ Transaction sent:', result);
         showNotification('🔄 جاري التحقق من الدفع...', 'warning');
         
-        // ⚠️ الخطوة 3: التحقق من الدفع في السيرفر
         const txHash = await getTransactionHashFromBoc(result.boc);
         const verification = await verifyPaymentOnServer(currentOrderId, txHash, tonAmount);
         
@@ -587,7 +642,7 @@ async function buyPremium() {
             });
             
         } else {
-            showNotification('❌ فشل التحقق: ' + verification.message, 'error');
+            showNotification('❌ فشل التحقق: ' + (verification.message || 'خطأ غير معروف'), 'error');
         }
         
     } catch (error) {
@@ -596,7 +651,7 @@ async function buyPremium() {
         if (error.message?.includes('cancelled') || error.message?.includes('rejected')) {
             showNotification('❌ تم إلغاء المعاملة', 'error');
         } else {
-            showNotification('❌ فشل المعاملة: ' + error.message, 'error');
+            showNotification('❌ فشل المعاملة: ' + (error.message || 'خطأ غير معروف'), 'error');
         }
     }
 }
@@ -618,6 +673,7 @@ function saveOrder(order) {
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('✅ Page loaded');
+    console.log('🔗 API Base URL:', API_BASE_URL);
     
     fetchTonPrice();
     setInterval(fetchTonPrice, 30000);

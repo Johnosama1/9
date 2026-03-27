@@ -1,14 +1,12 @@
 /* ============================================================
-   starGo - Final Version with TON Fake Token Protection
+   starGo - Final Version with Sidebar Fix
 ============================================================ */
 
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
-const API_URL = 'https://stargo.vercel.app/api'; // غير حسب سيرفرك
 
 window.tonPrice = null;
 const FIXED_FEE = 0.20;
 let tonConnectUI = null;
-let currentOrder = null; // لتخزين بيانات الأوردر الحالي
 
 /* ============================================================
    Helper Functions
@@ -323,55 +321,8 @@ function calculateStars() {
 }
 
 /* ============================================================
-   Purchase with Anti-Fake Protection
+   Purchase
 ============================================================ */
-
-/**
- * 🔒 إنشاء الأوردر في السيرفر قبل الدفع
- */
-async function createOrder(type, data) {
-    try {
-        const endpoint = type === 'stars' ? '/order/stars' : '/order/premium';
-        const response = await fetch(`${API_URL}${endpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        
-        const result = await response.json();
-        return result;
-    } catch (error) {
-        console.error('Create order error:', error);
-        return { success: false, message: 'خطأ في إنشاء الطلب' };
-    }
-}
-
-/**
- * 🔒 التحقق من الدفع بعد إرساله (مكافحة العملات الوهمية)
- */
-async function verifyPayment(orderId, txHash, walletAddress, orderType) {
-    try {
-        showNotification('🔍 جاري التحقق من صحة العملة...', 'warning');
-        
-        const response = await fetch(`${API_URL}/verify-payment`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                order_id: orderId,
-                tx_hash: txHash,
-                wallet_address: walletAddress,
-                order_type: orderType
-            })
-        });
-        
-        const result = await response.json();
-        return result;
-        
-    } catch (error) {
-        console.error('Verification error:', error);
-        return { success: false, message: 'خطأ في التحقق من الدفع' };
-    }
-}
 
 async function buyStars() {
     console.log('🛒 Buying stars...');
@@ -380,7 +331,6 @@ async function buyStars() {
     
     const username = document.getElementById("user-name").innerText || document.getElementById("username-input").value.trim();
     const amount = document.getElementById("stars-amount").value;
-    const walletAddress = document.getElementById("walletAddress").value;
     
     if (!username) {
         showNotification('❌ أدخل اسم المستخدم', 'error');
@@ -401,26 +351,6 @@ async function buyStars() {
     const TON_PER_STAR = 0.0099273;
     const tonAmount = (amount * TON_PER_STAR).toFixed(4);
     
-    // 🔒 الخطوة 1: إنشاء الأوردر في السيرفر
-    showNotification('📝 جاري إنشاء الطلب...', 'warning');
-    
-    const orderResult = await createOrder('stars', {
-        user_id: 1, // غير حسب نظام تسجيل الدخول عندك
-        recipient: username,
-        amount: amount,
-        ton_amount: tonAmount,
-        wallet_address: walletAddress
-    });
-    
-    if (!orderResult.success) {
-        showNotification('❌ ' + orderResult.message, 'error');
-        return;
-    }
-    
-    const orderId = orderResult.data.order_id;
-    console.log('✅ Order created:', orderId);
-    
-    // 🔒 الخطوة 2: فتح المحفظة للدفع
     showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
     
     try {
@@ -434,21 +364,7 @@ async function buyStars() {
             ]
         });
         
-        console.log('✅ Transaction sent:', result);
-        
-        // 🔒 الخطوة 3: التحقق من الدفع (مكافحة العملات الوهمية)
-        const txHash = result.boc; // أو استخرج الهاش من النتيجة
-        
-        const verification = await verifyPayment(orderId, txHash, walletAddress, 'stars');
-        
-        if (!verification.success) {
-            // ❌ فشل التحقق - عملة وهمية!
-            showNotification('🚨 ' + verification.message, 'error');
-            showNotification('⚠️ تم اكتشاف عملة غير صالحة. تم إلغاء الطلب.', 'error');
-            return;
-        }
-        
-        // ✅ نجح التحقق
+        console.log('✅ Success:', result);
         showNotification(`✅ تم شراء ${amount} نجمة بنجاح!`, 'success');
         
         saveOrder({
@@ -457,9 +373,7 @@ async function buyStars() {
             amount: amount,
             tonAmount: tonAmount,
             date: getFormattedDate(),
-            boc: result.boc,
-            orderId: orderId,
-            verified: true
+            boc: result.boc
         });
         
     } catch (error) {
@@ -482,7 +396,6 @@ async function buyPremium() {
     
     const username = document.getElementById("premium-user-name").innerText || document.getElementById("premium-username-input").value.trim();
     const selectedPlan = document.querySelector('.plan.active-plan');
-    const walletAddress = document.getElementById("walletAddress").value;
     
     if (!username) {
         showNotification('❌ أدخل اسم المستخدم', 'error');
@@ -503,25 +416,6 @@ async function buyPremium() {
     const tonAmount = selectedPlan.getAttribute('data-ton');
     const planName = selectedPlan.querySelector('span').innerText;
     
-    // 🔒 الخطوة 1: إنشاء الأوردر
-    showNotification('📝 جاري إنشاء الطلب...', 'warning');
-    
-    const orderResult = await createOrder('premium', {
-        user_id: 1,
-        recipient: username,
-        plan: planName,
-        ton_amount: tonAmount,
-        wallet_address: walletAddress
-    });
-    
-    if (!orderResult.success) {
-        showNotification('❌ ' + orderResult.message, 'error');
-        return;
-    }
-    
-    const orderId = orderResult.data.order_id;
-    
-    // 🔒 الخطوة 2: فتح المحفظة
     showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
     
     try {
@@ -535,19 +429,7 @@ async function buyPremium() {
             ]
         });
         
-        console.log('✅ Transaction sent:', result);
-        
-        // 🔒 الخطوة 3: التحقق من الدفع
-        const txHash = result.boc;
-        
-        const verification = await verifyPayment(orderId, txHash, walletAddress, 'premium');
-        
-        if (!verification.success) {
-            showNotification('🚨 ' + verification.message, 'error');
-            showNotification('⚠️ تم اكتشاف عملة غير صالحة. تم إلغاء الطلب.', 'error');
-            return;
-        }
-        
+        console.log('✅ Success:', result);
         showNotification(`✅ تم شراء ${planName} بنجاح!`, 'success');
         
         saveOrder({
@@ -556,9 +438,7 @@ async function buyPremium() {
             plan: planName,
             tonAmount: tonAmount,
             date: getFormattedDate(),
-            boc: result.boc,
-            orderId: orderId,
-            verified: true
+            boc: result.boc
         });
         
     } catch (error) {
@@ -588,7 +468,7 @@ function saveOrder(order) {
 ============================================================ */
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('✅ Page loaded with TON Anti-Fake Protection');
+    console.log('✅ Page loaded');
     
     fetchTonPrice();
     setInterval(fetchTonPrice, 30000);

@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS stars_orders (
     ton_amount DECIMAL(10,4),
     order_id VARCHAR(100) UNIQUE,
     status ENUM('pending', 'paid', 'completed', 'failed', 'cancelled') DEFAULT 'pending',
-    tx_hash VARCHAR(255) NULL,
+    tx_hash VARCHAR(100) NULL,
     paid_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at DATETIME,
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS premium_orders (
     ton_amount DECIMAL(10,4),
     order_id VARCHAR(100) UNIQUE,
     status ENUM('pending', 'paid', 'completed', 'failed', 'cancelled') DEFAULT 'pending',
-    tx_hash VARCHAR(255) NULL,
+    tx_hash VARCHAR(100) NULL,
     paid_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at DATETIME,
@@ -58,10 +58,21 @@ CREATE TABLE IF NOT EXISTS premium_orders (
 CREATE TABLE IF NOT EXISTS payment_verifications (
     id INT AUTO_INCREMENT PRIMARY KEY,
     order_id VARCHAR(100) NOT NULL,
-    tx_hash VARCHAR(255) NOT NULL,
+    tx_hash VARCHAR(100) NOT NULL,
     status ENUM('confirmed', 'rejected', 'pending') DEFAULT 'pending',
     details JSON,
     verified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_tx_hash (tx_hash),
     INDEX idx_order_id (order_id)
 );
+
+-- ============================================
+-- إضافة حقل tx_hash لو مش موجود (للتحديث)
+-- ============================================
+ALTER TABLE stars_orders 
+ADD COLUMN IF NOT EXISTS tx_hash VARCHAR(100) NULL AFTER status,
+ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP NULL AFTER tx_hash;
+
+ALTER TABLE premium_orders 
+ADD COLUMN IF NOT EXISTS tx_hash VARCHAR(100) NULL AFTER status,
+ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP NULL AFTER tx_hash;

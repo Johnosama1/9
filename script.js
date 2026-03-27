@@ -3,7 +3,7 @@
    ============================================================ */
 
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
-const API_BASE_URL = ''; // ⚠️ حط الرابط كامل هنا
+const API_BASE_URL = 'https://stargo.vercel.app'; // ⚠️ حط الرابط كامل هنا
 
 window.tonPrice = null;
 const FIXED_FEE = 0.20;

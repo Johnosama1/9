@@ -8,9 +8,6 @@ const mysql = require('mysql2/promise');
 const app = express();
 const PORT = 3000;
 
-// ⚠️ عنوان محفظتك اللي هتستلم عليها الفلوس
-const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
-
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -36,101 +33,9 @@ async function connectDB() {
 }
 connectDB();
 
-// Helper function - ⚠️ غيرت الاسم من response لـ sendResponse
-function sendResponse(res, success, message, data = null) {
+// Helper function
+function response(res, success, message, data = null) {
     res.json({ success, message, data });
-}
-
-// ============================================
-// TON PAYMENT VERIFICATION FUNCTIONS
-// ============================================
-
-// التحقق من صحة عنوان TON
-function isValidTonAddress(address) {
-    const tonAddressRegex = /^(EQ|UQ)[a-zA-Z0-9_-]{46}$/;
-    return tonAddressRegex.test(address);
-}
-
-// التحقق من وجود المعاملة على البلوكتشين
-async function verifyTonTransaction(txHash, expectedAmount, recipientAddress) {
-    try {
-        const tonCenterApi = 'https://toncenter.com/api/v2';
-        const txResponse = await fetch(`${tonCenterApi}/getTransactions?hash=${txHash}&limit=1`);
-        const txData = await txResponse.json();
-        
-        if (!txData.ok || !txData.result || txData.result.length === 0) {
-            return { valid: false, reason: 'المعاملة غير موجودة على البلوكتشين' };
-        }
-        
-        const transaction = txData.result[0];
-        
-        if (transaction.out_msgs && transaction.out_msgs.length > 0) {
-            const outMsg = transaction.out_msgs[0];
-            const txRecipient = outMsg.destination;
-            
-            if (txRecipient !== recipientAddress) {
-                return { valid: false, reason: 'عنوان المستلم غير صحيح' };
-            }
-            
-            const txAmount = parseInt(outMsg.value);
-            const expectedNanoTon = Math.floor(expectedAmount * 1000000000);
-            const tolerance = expectedNanoTon * 0.01;
-            
-            if (Math.abs(txAmount - expectedNanoTon) > tolerance) {
-                return { valid: false, reason: `المبلغ غير صحيح. المتوقع: ${expectedAmount} TON، المستلم: ${(txAmount / 1000000000).toFixed(4)} TON` };
-            }
-            
-            const txTime = transaction.utime * 1000;
-            const now = Date.now();
-            const oneHour = 60 * 60 * 1000;
-            
-            if (now - txTime > oneHour) {
-                return { valid: false, reason: 'المعاملة قديمة جداً (أكثر من ساعة)' };
-            }
-            
-            return { 
-                valid: true, 
-                transaction: {
-                    hash: txHash,
-                    amount: txAmount / 1000000000,
-                    recipient: txRecipient,
-                    time: new Date(txTime).toISOString()
-                }
-            };
-        }
-        
-        return { valid: false, reason: 'بيانات المعاملة غير صحيحة' };
-        
-    } catch (error) {
-        console.error('TON Verification Error:', error);
-        return { valid: false, reason: 'خطأ في التحقق من البلوكتشين: ' + error.message };
-    }
-}
-
-// التحقق من عدم استخدام نفس المعاملة مرتين
-async function isTransactionUsed(txHash) {
-    try {
-        const [rows] = await db.execute(
-            'SELECT id FROM payment_verifications WHERE tx_hash = ? AND status = "confirmed"',
-            [txHash]
-        );
-        return rows.length > 0;
-    } catch (error) {
-        console.error('Database Error:', error);
-        return true;
-    }
-}
-
-// حفظ نتيجة التحقق في قاعدة البيانات
-async function saveVerificationResult(orderId, txHash, status, details) {
-    try {
-        await db.execute(
-            'INSERT INTO payment_verifications (order_id, tx_hash, status, details, verified_at) VALUES (?, ?, ?, ?, NOW())',
-            [orderId, txHash, status, JSON.stringify(details)]
-        );
-    } catch (error) {
-        console.error('Error saving verification:', error);
-    }
 }
 
 // ============================================
@@ -142,9 +47,9 @@ app.get('/api/price', async (req, res) => {
     try {
         const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=toncoin&vs_currencies=usd');
         const data = await response.json();
-        sendResponse(res, true, 'Price fetched', { price: data.toncoin.usd });
+        response(res, true, 'Price fetched', { price: data.toncoin.usd });
     } catch (error) {
-        sendResponse(res, true, 'Using fallback price', { price: 5.5 });
+        response(res, true, 'Using fallback price', { price: 5.5 });
     }
 });
 
@@ -153,20 +58,16 @@ app.post('/api/wallet', async (req, res) => {
     const { wallet_address, user_id } = req.body;
     
     if (!wallet_address) {
-        return sendResponse(res, false, 'عنوان المحفظة مطلوب');
-    }
-    
-    if (!isValidTonAddress(wallet_address)) {
-        return sendResponse(res, false, 'عنوان TON غير صحيح. يجب أن يبدأ بـ EQ أو UQ ويكون 48 حرف');
+        return response(res, false, 'عنوان المحفظة مطلوب');
     }
     
     try {
         if (user_id) {
             await db.execute('UPDATE users SET wallet_address = ?, wallet_connected_at = NOW() WHERE id = ?', [wallet_address, user_id]);
         }
-        sendResponse(res, true, 'تم ربط المحفظة');
+        response(res, true, 'تم ربط المحفظة');
     } catch (error) {
-        sendResponse(res, false, 'خطأ في الحفظ');
+        response(res, false, 'خطأ في الحفظ');
     }
 });
 
@@ -176,7 +77,7 @@ app.post('/api/login', async (req, res) => {
     const cleanUsername = username?.replace('@', '');
     
     if (!cleanUsername) {
-        return sendResponse(res, false, 'اسم المستخدم مطلوب');
+        return response(res, false, 'اسم المستخدم مطلوب');
     }
     
     try {
@@ -184,130 +85,57 @@ app.post('/api/login', async (req, res) => {
         
         if (users.length > 0) {
             await db.execute('UPDATE users SET last_login = NOW(), login_count = login_count + 1 WHERE id = ?', [users[0].id]);
-            sendResponse(res, true, 'تم تسجيل الدخول', { user_id: users[0].id, username: '@' + cleanUsername });
+            response(res, true, 'تم تسجيل الدخول', { user_id: users[0].id, username: '@' + cleanUsername });
         } else {
             const [result] = await db.execute('INSERT INTO users (telegram_username, first_login, last_login) VALUES (?, NOW(), NOW())', [cleanUsername]);
-            sendResponse(res, true, 'تم إنشاء حساب', { user_id: result.insertId, username: '@' + cleanUsername });
+            response(res, true, 'تم إنشاء حساب', { user_id: result.insertId, username: '@' + cleanUsername });
         }
     } catch (error) {
-        sendResponse(res, false, 'خطأ في قاعدة البيانات');
+        response(res, false, 'خطأ في قاعدة البيانات');
     }
 });
 
 // 4. Create Order (Stars)
 app.post('/api/order/stars', async (req, res) => {
-    const { user_id, recipient, amount, ton_amount, tx_hash } = req.body;
+    const { user_id, recipient, amount, ton_amount } = req.body;
     const orderId = 'STAR_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
     
     if (!user_id || !recipient || !amount) {
-        return sendResponse(res, false, 'بيانات غير مكتملة');
-    }
-    
-    if (tx_hash) {
-        const used = await isTransactionUsed(tx_hash);
-        if (used) {
-            return sendResponse(res, false, 'هذه المعاملة مستخدمة من قبل!');
-        }
-        
-        const verification = await verifyTonTransaction(tx_hash, ton_amount, RECEIVER_WALLET);
-        
-        if (!verification.valid) {
-            await saveVerificationResult(orderId, tx_hash, 'rejected', { reason: verification.reason });
-            return sendResponse(res, false, `فشل التحقق: ${verification.reason}`);
-        }
-        
-        await saveVerificationResult(orderId, tx_hash, 'confirmed', verification.transaction);
+        return response(res, false, 'بيانات غير مكتملة');
     }
     
     try {
         await db.execute(
-            'INSERT INTO stars_orders (user_id, recipient_username, stars_amount, ton_amount, order_id, status, tx_hash) VALUES (?, ?, ?, ?, ?, "pending", ?)',
-            [user_id, recipient, amount, ton_amount, orderId, tx_hash || null]
+            'INSERT INTO stars_orders (user_id, recipient_username, stars_amount, ton_amount, order_id, status) VALUES (?, ?, ?, ?, ?, "pending")',
+            [user_id, recipient, amount, ton_amount, orderId]
         );
-        sendResponse(res, true, 'تم إنشاء الطلب', { order_id: orderId });
+        response(res, true, 'تم إنشاء الطلب', { order_id: orderId });
     } catch (error) {
-        sendResponse(res, false, 'خطأ في إنشاء الطلب');
+        response(res, false, 'خطأ في إنشاء الطلب');
     }
 });
 
 // 5. Create Order (Premium)
 app.post('/api/order/premium', async (req, res) => {
-    const { user_id, recipient, plan, ton_amount, tx_hash } = req.body;
+    const { user_id, recipient, plan, ton_amount } = req.body;
     const orderId = 'PRM_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
     
     if (!user_id || !recipient || !plan) {
-        return sendResponse(res, false, 'بيانات غير مكتملة');
-    }
-    
-    if (tx_hash) {
-        const used = await isTransactionUsed(tx_hash);
-        if (used) {
-            return sendResponse(res, false, 'هذه المعاملة مستخدمة من قبل!');
-        }
-        
-        const verification = await verifyTonTransaction(tx_hash, ton_amount, RECEIVER_WALLET);
-        
-        if (!verification.valid) {
-            await saveVerificationResult(orderId, tx_hash, 'rejected', { reason: verification.reason });
-            return sendResponse(res, false, `فشل التحقق: ${verification.reason}`);
-        }
-        
-        await saveVerificationResult(orderId, tx_hash, 'confirmed', verification.transaction);
+        return response(res, false, 'بيانات غير مكتملة');
     }
     
     try {
         await db.execute(
-            'INSERT INTO premium_orders (user_id, recipient_username, plan_name, ton_amount, order_id, status, tx_hash) VALUES (?, ?, ?, ?, ?, "pending", ?)',
-            [user_id, recipient, plan, ton_amount, orderId, tx_hash || null]
+            'INSERT INTO premium_orders (user_id, recipient_username, plan_name, ton_amount, order_id, status) VALUES (?, ?, ?, ?, ?, "pending")',
+            [user_id, recipient, plan, ton_amount, orderId]
         );
-        sendResponse(res, true, 'تم إنشاء الطلب', { order_id: orderId });
+        response(res, true, 'تم إنشاء الطلب', { order_id: orderId });
     } catch (error) {
-        sendResponse(res, false, 'خطأ في إنشاء الطلب');
+        response(res, false, 'خطأ في إنشاء الطلب');
     }
 });
 
-// 6. Verify Payment Manually
-app.post('/api/verify-payment', async (req, res) => {
-    const { order_id, tx_hash, ton_amount } = req.body;
-    
-    if (!order_id || !tx_hash) {
-        return sendResponse(res, false, 'رقم الطلب ومعرف المعاملة مطلوبان');
-    }
-    
-    const used = await isTransactionUsed(tx_hash);
-    if (used) {
-        return sendResponse(res, false, 'هذه المعاملة مستخدمة من قبل!');
-    }
-    
-    const verification = await verifyTonTransaction(tx_hash, ton_amount, RECEIVER_WALLET);
-    
-    if (!verification.valid) {
-        await saveVerificationResult(order_id, tx_hash, 'rejected', { reason: verification.reason });
-        return sendResponse(res, false, `فشل التحقق: ${verification.reason}`);
-    }
-    
-    try {
-        let [result] = await db.execute(
-            'UPDATE stars_orders SET status = "paid", tx_hash = ?, paid_at = NOW() WHERE order_id = ?',
-            [tx_hash, order_id]
-        );
-        
-        if (result.affectedRows === 0) {
-            [result] = await db.execute(
-                'UPDATE premium_orders SET status = "paid", tx_hash = ?, paid_at = NOW() WHERE order_id = ?',
-                [tx_hash, order_id]
-            );
-        }
-        
-        await saveVerificationResult(order_id, tx_hash, 'confirmed', verification.transaction);
-        
-        sendResponse(res, true, 'تم التحقق من الدفع بنجاح', verification.transaction);
-    } catch (error) {
-        sendResponse(res, false, 'خطأ في تحديث الطلب');
-    }
-});
-
-// 7. Update Order Status
+// 6. Update Order Status
 app.put('/api/order/:orderId', async (req, res) => {
     const { orderId } = req.params;
     const { status } = req.body;
@@ -319,13 +147,13 @@ app.put('/api/order/:orderId', async (req, res) => {
             [result] = await db.execute('UPDATE premium_orders SET status = ?, completed_at = NOW() WHERE order_id = ?', [status, orderId]);
         }
         
-        sendResponse(res, true, 'تم تحديث الحالة');
+        response(res, true, 'تم تحديث الحالة');
     } catch (error) {
-        sendResponse(res, false, 'خطأ في التحديث');
+        response(res, false, 'خطأ في التحديث');
     }
 });
 
-// 8. Get User Orders
+// 7. Get User Orders
 app.get('/api/orders/:userId', async (req, res) => {
     const { userId } = req.params;
     
@@ -333,13 +161,13 @@ app.get('/api/orders/:userId', async (req, res) => {
         const [stars] = await db.execute('SELECT order_id, stars_amount, status, created_at FROM stars_orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 20', [userId]);
         const [premium] = await db.execute('SELECT order_id, plan_name, status, created_at FROM premium_orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 20', [userId]);
         
-        sendResponse(res, true, 'تم جلب الطلبات', { stars, premium });
+        response(res, true, 'تم جلب الطلبات', { stars, premium });
     } catch (error) {
-        sendResponse(res, false, 'خطأ في جلب الطلبات');
+        response(res, false, 'خطأ في جلب الطلبات');
     }
 });
 
-// 9. Get Statistics
+// 8. Get Statistics
 app.get('/api/stats', async (req, res) => {
     try {
         const [totalUsers] = await db.execute('SELECT COUNT(*) as total FROM users');
@@ -347,18 +175,18 @@ app.get('/api/stats', async (req, res) => {
         const [pendingPremium] = await db.execute('SELECT COUNT(*) as total FROM premium_orders WHERE status = "pending"');
         const [todayOrders] = await db.execute('SELECT COUNT(*) as total FROM stars_orders WHERE DATE(created_at) = CURDATE()');
         
-        sendResponse(res, true, 'تم جلب الإحصائيات', {
+        response(res, true, 'تم جلب الإحصائيات', {
             total_users: totalUsers[0].total,
             pending_stars: pendingStars[0].total,
             pending_premium: pendingPremium[0].total,
             today_orders: todayOrders[0].total
         });
     } catch (error) {
-        sendResponse(res, false, 'خطأ في جلب الإحصائيات');
+        response(res, false, 'خطأ في جلب الإحصائيات');
     }
 });
 
-// 10. Get All Orders (Admin)
+// 9. Get All Orders (Admin)
 app.get('/api/admin/orders', async (req, res) => {
     try {
         const [stars] = await db.execute(`
@@ -377,25 +205,25 @@ app.get('/api/admin/orders', async (req, res) => {
             LIMIT 100
         `);
         
-        sendResponse(res, true, 'تم جلب الطلبات', { stars, premium });
+        response(res, true, 'تم جلب الطلبات', { stars, premium });
     } catch (error) {
-        sendResponse(res, false, 'خطأ في جلب الطلبات');
+        response(res, false, 'خطأ في جلب الطلبات');
     }
 });
 
-// 11. Get All Users (Admin)
+// 10. Get All Users (Admin)
 app.get('/api/admin/users', async (req, res) => {
     try {
         const [users] = await db.execute('SELECT id, telegram_username, wallet_address, login_count, last_login, created_at FROM users ORDER BY created_at DESC LIMIT 100');
-        sendResponse(res, true, 'تم جلب المستخدمين', users);
+        response(res, true, 'تم جلب المستخدمين', users);
     } catch (error) {
-        sendResponse(res, false, 'خطأ في جلب المستخدمين');
+        response(res, false, 'خطأ في جلب المستخدمين');
     }
 });
 
-// 12. Health Check
+// 11. Health Check
 app.get('/api/health', (req, res) => {
-    sendResponse(res, true, 'Server is running');
+    response(res, true, 'Server is running');
 });
 
 // Start server
@@ -407,7 +235,6 @@ app.listen(PORT, () => {
     console.log(`   POST /api/wallet`);
     console.log(`   POST /api/order/stars`);
     console.log(`   POST /api/order/premium`);
-    console.log(`   POST /api/verify-payment`);
     console.log(`   PUT  /api/order/:orderId`);
     console.log(`   GET  /api/orders/:userId`);
     console.log(`   GET  /api/stats`);

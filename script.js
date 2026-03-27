@@ -3,11 +3,7 @@
    ============================================================ */
 
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
-
-// ⚠️ غيّر الرابط ده للرابط بتاعك على Vercel
-const API_BASE_URL = window.location.origin.includes('localhost') 
-    ? 'http://localhost:3000' 
-    : 'https://stargo.vercel.app';
+const API_BASE_URL = 'https://stargo.vercel.app'; // ⚠️ حط الرابط كامل هنا
 
 window.tonPrice = null;
 const FIXED_FEE = 0.20;
@@ -103,7 +99,7 @@ async function saveWalletToServer(walletAddress) {
     if (!userId) return;
     
     try {
-        const response = await fetch(`${API_BASE_URL}/api/wallet`, {
+        await fetch(`${API_BASE_URL}/api/wallet`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -111,10 +107,6 @@ async function saveWalletToServer(walletAddress) {
                 wallet_address: walletAddress
             })
         });
-        
-        if (!response.ok) {
-            console.warn('Wallet save failed:', response.status);
-        }
     } catch (e) {
         console.warn('Wallet save error:', e);
     }
@@ -359,19 +351,14 @@ async function createOrderOnServer(type, data) {
         
         const response = await fetch(url, {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
         
         console.log('📥 Response status:', response.status);
         
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ HTTP Error:', response.status, errorText);
-            throw new Error(`HTTP Error: ${response.status} - ${errorText}`);
+            throw new Error(`HTTP Error: ${response.status}`);
         }
         
         const text = await response.text();
@@ -411,21 +398,13 @@ async function verifyPaymentOnServer(orderId, txHash, tonAmount) {
     try {
         const response = await fetch(`${API_BASE_URL}/api/verify-payment`, {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 order_id: orderId,
                 tx_hash: txHash,
                 ton_amount: parseFloat(tonAmount)
             })
         });
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP Error: ${response.status} - ${errorText}`);
-        }
         
         const text = await response.text();
         
@@ -443,7 +422,7 @@ async function verifyPaymentOnServer(orderId, txHash, tonAmount) {
         return result;
     } catch (error) {
         console.error('Payment verification error:', error);
-        return { success: false, message: 'خطأ في الاتصال بالسيرفر: ' + error.message };
+        return { success: false, message: 'خطأ في الاتصال بالسيرفر' };
     }
 }
 
@@ -673,7 +652,6 @@ function saveOrder(order) {
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('✅ Page loaded');
-    console.log('🔗 API Base URL:', API_BASE_URL);
     
     fetchTonPrice();
     setInterval(fetchTonPrice, 30000);

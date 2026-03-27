@@ -357,10 +357,15 @@ async function createOrderOnServer(type, data) {
         
         console.log('📥 Response status:', response.status);
         
-        const text = await response.text();
-        console.log('📄 Raw response:', text);
+        if (!response.ok) {
+            throw new Error(`HTTP Error: ${response.status}`);
+        }
         
-        if (!text) {
+        const text = await response.text();
+        console.log('📄 Raw response length:', text.length);
+        console.log('📄 Raw response:', text.substring(0, 200));
+        
+        if (!text || text.trim() === '') {
             throw new Error('السيرفر رجع response فاضي');
         }
         
@@ -369,11 +374,16 @@ async function createOrderOnServer(type, data) {
             result = JSON.parse(text);
         } catch (e) {
             console.error('❌ JSON parse error:', e);
+            console.error('Raw text that failed:', text);
             throw new Error('السيرفر رجع بيانات مش JSON: ' + text.substring(0, 100));
         }
         
         if (!result.success) {
             throw new Error(result.message || 'خطأ غير معروف من السيرفر');
+        }
+        
+        if (!result.data || !result.data.order_id) {
+            throw new Error('السيرفر لم يرجع order_id');
         }
         
         return result.data.order_id;
@@ -463,7 +473,12 @@ async function buyStars() {
         });
         
         console.log('✅ Order created:', currentOrderId);
-        showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
+        
+        if (!currentOrderId) {
+            throw new Error('لم يتم استلام رقم الطلب');
+        }
+        
+        showNotification('✅ تم إنشاء الطلب، جاري فتح المحفظة...', 'success');
         
     } catch (error) {
         showNotification('❌ فشل إنشاء الطلب: ' + error.message, 'error');
@@ -506,7 +521,7 @@ async function buyStars() {
             document.getElementById("calc-result").innerHTML = '';
             
         } else {
-            showNotification('❌ فشل التحقق: ' + verification.message, 'error');
+            showNotification('❌ فشل التحقق: ' + (verification.message || 'خطأ غير معروف'), 'error');
         }
         
     } catch (error) {
@@ -517,7 +532,7 @@ async function buyStars() {
         } else if (error.message?.includes('timeout')) {
             showNotification('❌ انتهت المهلة', 'error');
         } else {
-            showNotification('❌ فشل المعاملة: ' + error.message, 'error');
+            showNotification('❌ فشل المعاملة: ' + (error.message || 'خطأ غير معروف'), 'error');
         }
     }
 }
@@ -561,7 +576,12 @@ async function buyPremium() {
         });
         
         console.log('✅ Order created:', currentOrderId);
-        showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
+        
+        if (!currentOrderId) {
+            throw new Error('لم يتم استلام رقم الطلب');
+        }
+        
+        showNotification('✅ تم إنشاء الطلب، جاري فتح المحفظة...', 'success');
         
     } catch (error) {
         showNotification('❌ فشل إنشاء الطلب: ' + error.message, 'error');
@@ -601,7 +621,7 @@ async function buyPremium() {
             });
             
         } else {
-            showNotification('❌ فشل التحقق: ' + verification.message, 'error');
+            showNotification('❌ فشل التحقق: ' + (verification.message || 'خطأ غير معروف'), 'error');
         }
         
     } catch (error) {
@@ -610,7 +630,7 @@ async function buyPremium() {
         if (error.message?.includes('cancelled') || error.message?.includes('rejected')) {
             showNotification('❌ تم إلغاء المعاملة', 'error');
         } else {
-            showNotification('❌ فشل المعاملة: ' + error.message, 'error');
+            showNotification('❌ فشل المعاملة: ' + (error.message || 'خطأ غير معروف'), 'error');
         }
     }
 }

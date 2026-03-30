@@ -53,22 +53,13 @@ const pool = new Pool({
     ssl: isExternalDB ? { rejectUnauthorized: false } : false
 });
 
+let dbInitialized = false;
+
 async function connectDB() {
+    if (dbInitialized) return;
     try {
         const client = await pool.connect();
         console.log('✅ Database connected');
-        
-        // إنشاء جدول التحققات لو مش موجود
-        await client.query(`
-            CREATE TABLE IF NOT EXISTS payment_verifications (
-                id SERIAL PRIMARY KEY,
-                order_id VARCHAR(50) NOT NULL,
-                tx_hash TEXT NOT NULL,
-                status VARCHAR(20) DEFAULT 'pending',
-                verification_data JSONB,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
 
         await client.query(`
             CREATE TABLE IF NOT EXISTS users (
@@ -118,16 +109,40 @@ async function connectDB() {
                 completed_at TIMESTAMP
             )
         `);
-        
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS payment_verifications (
+                id SERIAL PRIMARY KEY,
+                order_id VARCHAR(50) NOT NULL,
+                tx_hash TEXT NOT NULL,
+                status VARCHAR(20) DEFAULT 'pending',
+                verification_data JSONB,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
         await client.query(`CREATE INDEX IF NOT EXISTS idx_pv_order ON payment_verifications(order_id)`);
         await client.query(`CREATE INDEX IF NOT EXISTS idx_pv_tx ON payment_verifications(tx_hash)`);
-        
+
         client.release();
+        dbInitialized = true;
     } catch (error) {
         console.error('❌ Database error:', error.message);
-        process.exit(1);
+        throw error;
     }
 }
+
+// Middleware: ensure DB is ready before any API request
+app.use(async (req, res, next) => {
+    if (!dbInitialized) {
+        try {
+            await connectDB();
+        } catch (err) {
+            return res.status(500).json({ success: false, message: 'Database connection failed: ' + err.message });
+        }
+    }
+    next();
+});
 
 function sendResponse(res, success, message, data = null) {
     res.json({ success, message, data });
@@ -604,25 +619,13 @@ app.get('/admin', (req, res) => {
     res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
-// Initialize DB then start server
-connectDB().then(() => {
-    console.log(`\n🚀 ============================================`);
-    console.log(`🔒 SECURITY FEATURES ENABLED:`);
-    console.log(`   ✓ Blockchain verification (real TON only)`);
-    console.log(`   ✓ Anti-fake token protection`);
-    console.log(`   ✓ Transaction reuse prevention`);
-    console.log(`   ✓ Amount validation`);
-    console.log(`   ✓ Sender verification`);
-    console.log(`   ✓ Transaction age check`);
-    console.log(`🚀 ============================================\n`);
-
-    // Only listen when running directly (not on Vercel)
-    if (process.env.VERCEL !== '1') {
-        app.listen(PORT, '0.0.0.0', () => {
-            console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
-        });
-    }
-});
-
 // Export for Vercel serverless
 module.exports = app;
+
+// Start server when running directly (not on Vercel)
+if (!process.env.VERCEL) {
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`\n🚀 Server running on http://0.0.0.0:${PORT}`);
+        console.log(`🔒 Anti-fake protection enabled\n`);
+    });
+}

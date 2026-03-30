@@ -299,7 +299,7 @@ app.post('/api/order/stars', async (req, res) => {
         return sendResponse(res, false, 'الحد الأدنى 50 نجمة');
     }
     
-    const tonAddressRegex = /^(EQ|UQ)[a-zA-Z0-9_-]{46}$/;
+    const tonAddressRegex = /^((EQ|UQ)[a-zA-Z0-9_-]{46}|(-?[0-9]+):[0-9a-fA-F]{64})$/;
     if (!tonAddressRegex.test(wallet_address)) {
         return sendResponse(res, false, 'عنوان المحفظة غير صالح');
     }
@@ -327,7 +327,7 @@ app.post('/api/order/premium', async (req, res) => {
         return sendResponse(res, false, 'بيانات غير مكتملة');
     }
     
-    const tonAddressRegex = /^(EQ|UQ)[a-zA-Z0-9_-]{46}$/;
+    const tonAddressRegex = /^((EQ|UQ)[a-zA-Z0-9_-]{46}|(-?[0-9]+):[0-9a-fA-F]{64})$/;
     if (!tonAddressRegex.test(wallet_address)) {
         return sendResponse(res, false, 'عنوان المحفظة غير صالح');
     }

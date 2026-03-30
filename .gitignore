@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.local
+.env.production
+.env.*.local
+*.log
+npm-debug.log*
+.DS_Store
+.cache/
+attached_assets/
+.replit
+replit.nix
+.local/

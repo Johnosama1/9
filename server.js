@@ -153,15 +153,24 @@ function sendResponse(res, success, message, data = null) {
 // ============================================
 
 /**
- * جلب تفاصيل الترانزاكشن من البلوكتشين
+ * تطبيع عنوان TON للمقارنة (يحول من raw إلى شكل موحد)
  */
-async function getTransactionFromBlockchain(txHashOrBoc) {
+function normalizeTonAddress(addr) {
+    if (!addr) return '';
+    return addr.toLowerCase().replace(/^(eq|uq)/i, '');
+}
+
+/**
+ * البحث عن ترانزاكشن حقيقية عبر المرسل + المبلغ + الوقت
+ * (البوك BOC ليس هاش، لذا نبحث بالعنوان والمبلغ)
+ */
+async function getTransactionFromBlockchain(bocOrHash, expectedSender, expectedAmount) {
     try {
         const url = `${CONFIG.TON_API_ENDPOINT}/getTransactions`;
         
         const params = {
             address: CONFIG.RECEIVER_WALLET,
-            limit: 20,
+            limit: 50,
             archival: true
         };
         
@@ -169,19 +178,39 @@ async function getTransactionFromBlockchain(txHashOrBoc) {
             params.api_key = CONFIG.TON_API_KEY;
         }
         
-        console.log(`🔍 Searching for tx in blockchain...`);
+        console.log(`🔍 Searching for tx in blockchain by sender+amount...`);
         
         const apiResponse = await axios.get(url, { params, timeout: 10000 });
         
         if (!apiResponse.data?.result || !Array.isArray(apiResponse.data.result)) {
             return null;
         }
-        
+
+        const expectedNano = Math.floor(parseFloat(expectedAmount) * 1e9);
+        const minAcceptable = expectedNano * 0.99;
+        const now = Date.now() / 1000;
+        const maxAgeSeconds = CONFIG.TX_MAX_AGE_MINUTES * 60;
+        const normalizedSender = normalizeTonAddress(expectedSender);
+
         const tx = apiResponse.data.result.find(t => {
-            if (t.transaction_id?.hash === txHashOrBoc) return true;
-            if (t.in_msg?.body_hash === txHashOrBoc) return true;
-            if (txHashOrBoc && t.in_msg?.body_hash?.includes(txHashOrBoc.substring(0, 20))) return true;
-            return false;
+            if (!t.in_msg || !t.in_msg.source) return false;
+
+            // تحقق من المرسل
+            const txSender = normalizeTonAddress(t.in_msg.source);
+            if (txSender !== normalizedSender) return false;
+
+            // تحقق من المبلغ
+            const amountNano = parseInt(t.in_msg.value || 0);
+            if (amountNano < minAcceptable) return false;
+
+            // تحقق من الوقت
+            const ageSeconds = now - (t.utime || 0);
+            if (ageSeconds > maxAgeSeconds || ageSeconds < 0) return false;
+
+            // تحقق من الوجهة
+            if (t.in_msg.destination !== CONFIG.RECEIVER_WALLET) return false;
+
+            return true;
         });
         
         return tx || null;
@@ -240,7 +269,7 @@ async function verifyRealPayment(txDetails, expectedAmount, expectedSender) {
         };
     }
     
-    if (inMsg.source !== expectedSender) {
+    if (normalizeTonAddress(inMsg.source) !== normalizeTonAddress(expectedSender)) {
         return { 
             valid: false, 
             error: 'عنوان المرسل لا يتطابق',
@@ -443,17 +472,9 @@ app.post('/api/verify-payment', async (req, res) => {
         
         const order = orderResult.rows[0];
         
-        const alreadyUsed = await isTxAlreadyUsed(tx_hash);
-        if (alreadyUsed) {
-            await pool.query(
-                'INSERT INTO payment_verifications (order_id, tx_hash, status, verification_data) VALUES ($1, $2, $3, $4)',
-                [order_id, tx_hash, 'rejected', JSON.stringify({ error: 'Transaction already used' })]
-            );
-            return sendResponse(res, false, 'هذه المعاملة تم استخدامها من قبل');
-        }
-        
         console.log('🔍 Step 1: Searching blockchain...');
-        const txDetails = await getTransactionFromBlockchain(tx_hash);
+        // نبحث بالمرسل + المبلغ + الوقت لأن الـ BOC ليس هاش ترانزاكشن
+        const txDetails = await getTransactionFromBlockchain(tx_hash, wallet_address, order.ton_amount);
         
         if (!txDetails) {
             console.error('❌ Transaction not found on blockchain');
@@ -462,6 +483,18 @@ app.post('/api/verify-payment', async (req, res) => {
                 [order_id, tx_hash, 'rejected', JSON.stringify({ error: 'Not found on blockchain' })]
             );
             return sendResponse(res, false, 'المعاملة غير موجودة على البلوكتشين - تأكد من إتمام الدفع');
+        }
+        
+        // نستخدم الهاش الحقيقي من البلوكتشين (مش الـ BOC) للتحقق من التكرار
+        const realTxHash = txDetails.transaction_id?.hash || tx_hash;
+        
+        const alreadyUsed = await isTxAlreadyUsed(realTxHash);
+        if (alreadyUsed) {
+            await pool.query(
+                'INSERT INTO payment_verifications (order_id, tx_hash, status, verification_data) VALUES ($1, $2, $3, $4)',
+                [order_id, realTxHash, 'rejected', JSON.stringify({ error: 'Transaction already used' })]
+            );
+            return sendResponse(res, false, 'هذه المعاملة تم استخدامها من قبل');
         }
         
         console.log('✅ Transaction found on blockchain');
@@ -473,7 +506,7 @@ app.post('/api/verify-payment', async (req, res) => {
             'INSERT INTO payment_verifications (order_id, tx_hash, status, verification_data) VALUES ($1, $2, $3, $4)',
             [
                 order_id, 
-                tx_hash, 
+                realTxHash, 
                 verification.valid ? 'confirmed' : 'rejected',
                 JSON.stringify(verification)
             ]
@@ -481,7 +514,7 @@ app.post('/api/verify-payment', async (req, res) => {
         
         if (!verification.valid) {
             console.error(`🚨 PAYMENT REJECTED: ${verification.error}`);
-            await pool.query(`UPDATE ${table} SET status = 'failed', tx_hash = $1, updated_at = NOW() WHERE order_id = $2`, [tx_hash, order_id]);
+            await pool.query(`UPDATE ${table} SET status = 'failed', tx_hash = $1, updated_at = NOW() WHERE order_id = $2`, [realTxHash, order_id]);
             return sendResponse(res, false, verification.error, {
                 verified: false,
                 details: verification.details

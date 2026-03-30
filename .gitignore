@@ -11,3 +11,5 @@ attached_assets/
 .replit
 replit.nix
 .local/
+push.js
+push.sh

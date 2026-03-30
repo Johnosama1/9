@@ -8,6 +8,30 @@
   ],
   "routes": [
     {
+      "src": "/style\\.css",
+      "dest": "/style.css"
+    },
+    {
+      "src": "/script\\.js",
+      "dest": "/script.js"
+    },
+    {
+      "src": "/manifest\\.json",
+      "dest": "/manifest.json"
+    },
+    {
+      "src": "/tonconnect-manifest\\.json",
+      "dest": "/tonconnect-manifest.json"
+    },
+    {
+      "src": "/image\\.jpg",
+      "dest": "/image.jpg"
+    },
+    {
+      "src": "/(.*\\.(css|js|json|jpg|jpeg|png|gif|ico|svg|woff|woff2|ttf|eot))",
+      "dest": "/$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "/server.js"
     }

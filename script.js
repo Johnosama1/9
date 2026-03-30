@@ -3,7 +3,7 @@
 ============================================================ */
 
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
-const SERVER_URL = "http://192.168.1.3:3000"; // غيره حسب سيرفرك
+const SERVER_URL = "http://localhost:3000"; // غيره حسب سيرفرك
 
 window.tonPrice = null;
 const FIXED_FEE = 0.20;
@@ -609,3 +609,4 @@ document.addEventListener('DOMContentLoaded', function() {
     
     setTimeout(initTonConnect, 1500);
 });
+

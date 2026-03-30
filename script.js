@@ -1,9 +1,9 @@
-user_pasted_clipboard_long_content_as_file_=================.txt
 /* ============================================================
-   starGo - Final Version with Sidebar Fix
+   starGo - Secure Frontend (No Fake Purchases)
 ============================================================ */
 
 const RECEIVER_WALLET = "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE";
+const SERVER_URL = "http://localhost:3000"; // غيره حسب سيرفرك
 
 window.tonPrice = null;
 const FIXED_FEE = 0.20;
@@ -123,16 +123,13 @@ async function fetchWalletBalance(address) {
 }
 
 /* ============================================================
-   Wallet Connection - مع إغلاق القائمة
+   Wallet Connection
 ============================================================ */
 
 async function connectTonWallet() {
     console.log('🔘 Connect clicked - closing sidebar first');
     
-    // ✅ إغلاق القائمة الأول
     closeSidebar();
-    
-    // انتظار قصير عشان الأنيميشن يخلص
     await new Promise(resolve => setTimeout(resolve, 300));
     
     if (!tonConnectUI) {
@@ -166,7 +163,6 @@ function checkWalletBeforePurchase() {
     if (!walletAddress || walletInfo.style.display === 'none') {
         showNotification('⚠️ يجب ربط المحفظة أولاً', 'warning');
         
-        // فتح القائمة ومحاولة الربط
         document.getElementById('sidebar').classList.add('open');
         document.getElementById('overlay').style.display = 'block';
         
@@ -322,16 +318,17 @@ function calculateStars() {
 }
 
 /* ============================================================
-   Purchase
+   Purchase - SECURE VERSION (No Fake Purchases)
 ============================================================ */
 
 async function buyStars() {
-    console.log('🛒 Buying stars...');
+    console.log('🛒 Starting secure star purchase...');
     
     if (!checkWalletBeforePurchase()) return;
     
     const username = document.getElementById("user-name").innerText || document.getElementById("username-input").value.trim();
     const amount = document.getElementById("stars-amount").value;
+    const walletAddress = document.getElementById("walletAddress").value;
     
     if (!username) {
         showNotification('❌ أدخل اسم المستخدم', 'error');
@@ -352,10 +349,57 @@ async function buyStars() {
     const TON_PER_STAR = 0.0099273;
     const tonAmount = (amount * TON_PER_STAR).toFixed(4);
     
-    showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
-    
+    // ⚠️ الخطوة 1: إنشاء الأوردر في السيرفر أولاً (pending)
+    let orderId;
     try {
-        const result = await tonConnectUI.sendTransaction({
+        showNotification('🔄 جاري إنشاء الطلب...', 'warning');
+        
+        const loginRes = await fetch(`${SERVER_URL}/api/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: username.replace('@', '') })
+        });
+        const loginData = await loginRes.json();
+        
+        if (!loginData.success) {
+            showNotification('❌ فشل في تسجيل الدخول', 'error');
+            return;
+        }
+        
+        const orderRes = await fetch(`${SERVER_URL}/api/order/stars`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: loginData.data.user_id,
+                recipient: username,
+                amount: amount,
+                ton_amount: tonAmount,
+                wallet_address: walletAddress
+            })
+        });
+        
+        const orderData = await orderRes.json();
+        
+        if (!orderData.success) {
+            showNotification('❌ ' + orderData.message, 'error');
+            return;
+        }
+        
+        orderId = orderData.data.order_id;
+        console.log('✅ Order created:', orderId);
+        
+    } catch (error) {
+        console.error('❌ Order creation failed:', error);
+        showNotification('❌ فشل في إنشاء الطلب', 'error');
+        return;
+    }
+    
+    // ⚠️ الخطوة 2: فتح المحفظة للدفع
+    showNotification('🔄 جاري فتح المحفظة للدفع...', 'warning');
+    
+    let txResult;
+    try {
+        txResult = await tonConnectUI.sendTransaction({
             validUntil: Math.floor(Date.now() / 1000) + 600,
             messages: [
                 {
@@ -365,38 +409,72 @@ async function buyStars() {
             ]
         });
         
-        console.log('✅ Success:', result);
-        showNotification(`✅ تم شراء ${amount} نجمة بنجاح!`, 'success');
-        
-        saveOrder({
-            type: 'stars',
-            username: username,
-            amount: amount,
-            tonAmount: tonAmount,
-            date: getFormattedDate(),
-            boc: result.boc
-        });
+        console.log('✅ Transaction sent:', txResult);
         
     } catch (error) {
         console.error('❌ Transaction failed:', error);
+        
+        // ❌ لو فشل الدفع، نحدث الأوردر إنه فشل
+        try {
+            await fetch(`${SERVER_URL}/api/order/${orderId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'failed' })
+            });
+        } catch (e) { console.error('Failed to update order:', e); }
         
         if (error.message?.includes('cancelled') || error.message?.includes('rejected')) {
             showNotification('❌ تم إلغاء المعاملة', 'error');
         } else if (error.message?.includes('timeout')) {
             showNotification('❌ انتهت المهلة', 'error');
         } else {
-            showNotification('❌ فشل المعاملة', 'error');
+            showNotification('❌ فشل الدفع - تأكد من وجود رصيد كافي', 'error');
         }
+        return;
+    }
+    
+    // ⚠️ الخطوة 3: التحقق من الدفع في السيرفر (أهم خطوة!)
+    showNotification('🔄 جاري التحقق من الدفع...', 'warning');
+    
+    try {
+        const verifyRes = await fetch(`${SERVER_URL}/api/verify-payment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                order_id: orderId,
+                tx_hash: txResult.boc || txResult.hash,
+                wallet_address: walletAddress,
+                order_type: 'stars'
+            })
+        });
+        
+        const verifyData = await verifyRes.json();
+        
+        if (!verifyData.success) {
+            // ❌ السيرفر رفض الدفع (عملة وهمية، مبلغ غلط، إلخ)
+            showNotification('❌ ' + verifyData.message, 'error');
+            console.error('🚨 Payment verification failed:', verifyData);
+            return;
+        }
+        
+        // ✅ السيرفر أكد إن الدفع حقيقي
+        showNotification(`✅ تم شراء ${amount} نجمة بنجاح!`, 'success');
+        console.log('✅ Payment verified by server:', verifyData);
+        
+    } catch (error) {
+        console.error('❌ Verification request failed:', error);
+        showNotification('⚠️ تم الدفع لكن فشل التحقق - تواصل مع الدعم', 'warning');
     }
 }
 
 async function buyPremium() {
-    console.log('🛒 Buying premium...');
+    console.log('🛒 Starting secure premium purchase...');
     
     if (!checkWalletBeforePurchase()) return;
     
     const username = document.getElementById("premium-user-name").innerText || document.getElementById("premium-username-input").value.trim();
     const selectedPlan = document.querySelector('.plan.active-plan');
+    const walletAddress = document.getElementById('walletAddress').value;
     
     if (!username) {
         showNotification('❌ أدخل اسم المستخدم', 'error');
@@ -417,10 +495,50 @@ async function buyPremium() {
     const tonAmount = selectedPlan.getAttribute('data-ton');
     const planName = selectedPlan.querySelector('span').innerText;
     
-    showNotification('🔄 جاري فتح المحفظة للدفع...', 'success');
-    
+    // ⚠️ الخطوة 1: إنشاء الأوردر في السيرفر
+    let orderId;
     try {
-        const result = await tonConnectUI.sendTransaction({
+        showNotification('🔄 جاري إنشاء الطلب...', 'warning');
+        
+        const loginRes = await fetch(`${SERVER_URL}/api/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: username.replace('@', '') })
+        });
+        const loginData = await loginRes.json();
+        
+        const orderRes = await fetch(`${SERVER_URL}/api/order/premium`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: loginData.data.user_id,
+                recipient: username,
+                plan: planName,
+                ton_amount: tonAmount,
+                wallet_address: walletAddress
+            })
+        });
+        
+        const orderData = await orderRes.json();
+        
+        if (!orderData.success) {
+            showNotification('❌ ' + orderData.message, 'error');
+            return;
+        }
+        
+        orderId = orderData.data.order_id;
+        
+    } catch (error) {
+        showNotification('❌ فشل في إنشاء الطلب', 'error');
+        return;
+    }
+    
+    // ⚠️ الخطوة 2: الدفع
+    showNotification('🔄 جاري فتح المحفظة للدفع...', 'warning');
+    
+    let txResult;
+    try {
+        txResult = await tonConnectUI.sendTransaction({
             validUntil: Math.floor(Date.now() / 1000) + 600,
             messages: [
                 {
@@ -430,49 +548,65 @@ async function buyPremium() {
             ]
         });
         
-        console.log('✅ Success:', result);
-        showNotification(`✅ تم شراء ${planName} بنجاح!`, 'success');
-        
-        saveOrder({
-            type: 'premium',
-            username: username,
-            plan: planName,
-            tonAmount: tonAmount,
-            date: getFormattedDate(),
-            boc: result.boc
-        });
-        
     } catch (error) {
-        console.error('❌ Transaction failed:', error);
+        // ❌ فشل الدفع
+        try {
+            await fetch(`${SERVER_URL}/api/order/${orderId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'failed' })
+            });
+        } catch (e) { }
         
         if (error.message?.includes('cancelled') || error.message?.includes('rejected')) {
             showNotification('❌ تم إلغاء المعاملة', 'error');
         } else {
-            showNotification('❌ فشل المعاملة', 'error');
+            showNotification('❌ فشل الدفع - تأكد من وجود رصيد كافي', 'error');
         }
+        return;
+    }
+    
+    // ⚠️ الخطوة 3: التحقق من السيرفر
+    showNotification('🔄 جاري التحقق من الدفع...', 'warning');
+    
+    try {
+        const verifyRes = await fetch(`${SERVER_URL}/api/verify-payment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                order_id: orderId,
+                tx_hash: txResult.boc || txResult.hash,
+                wallet_address: walletAddress,
+                order_type: 'premium'
+            })
+        });
+        
+        const verifyData = await verifyRes.json();
+        
+        if (!verifyData.success) {
+            showNotification('❌ ' + verifyData.message, 'error');
+            return;
+        }
+        
+        showNotification(`✅ تم شراء ${planName} بنجاح!`, 'success');
+        
+    } catch (error) {
+        showNotification('⚠️ تم الدفع لكن فشل التحقق - تواصل مع الدعم', 'warning');
     }
 }
 
-function saveOrder(order) {
-    try {
-        const orders = JSON.parse(localStorage.getItem('orders') || '[]');
-        orders.push(order);
-        localStorage.setItem('orders', JSON.stringify(orders));
-        console.log('✅ Order saved:', order);
-    } catch (e) {
-        console.error('Save error:', e);
-    }
-}
+// ❌ حذفت saveOrder - مبقتش محتاجها لأن السيرفر هو اللي بيحفظ
 
 /* ============================================================
    Init
 ============================================================ */
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('✅ Page loaded');
+    console.log('✅ Secure page loaded');
     
     fetchTonPrice();
     setInterval(fetchTonPrice, 30000);
     
     setTimeout(initTonConnect, 1500);
 });
+

@@ -41,9 +41,16 @@ const CONFIG = {
 // Database (PostgreSQL)
 // ============================================
 
+const isExternalDB = process.env.DATABASE_URL && (
+    process.env.DATABASE_URL.includes('neon.tech') ||
+    process.env.DATABASE_URL.includes('supabase') ||
+    process.env.DATABASE_URL.includes('sslmode=require') ||
+    process.env.VERCEL === '1'
+);
+
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL && process.env.DATABASE_URL.includes('sslmode=require') ? { rejectUnauthorized: false } : false
+    ssl: isExternalDB ? { rejectUnauthorized: false } : false
 });
 
 async function connectDB() {
@@ -56,10 +63,59 @@ async function connectDB() {
             CREATE TABLE IF NOT EXISTS payment_verifications (
                 id SERIAL PRIMARY KEY,
                 order_id VARCHAR(50) NOT NULL,
-                tx_hash VARCHAR(100) NOT NULL,
+                tx_hash TEXT NOT NULL,
                 status VARCHAR(20) DEFAULT 'pending',
                 verification_data JSONB,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                telegram_username VARCHAR(100) UNIQUE NOT NULL,
+                wallet_address VARCHAR(255),
+                login_count INT DEFAULT 1,
+                first_login TIMESTAMP,
+                last_login TIMESTAMP,
+                wallet_connected_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS stars_orders (
+                id SERIAL PRIMARY KEY,
+                user_id INT REFERENCES users(id) ON DELETE SET NULL,
+                recipient_username VARCHAR(100),
+                stars_amount INT,
+                ton_amount DECIMAL(10,4),
+                order_id VARCHAR(100) UNIQUE,
+                wallet_address VARCHAR(255),
+                status VARCHAR(20) DEFAULT 'pending',
+                tx_hash TEXT,
+                paid_at TIMESTAMP,
+                updated_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP
+            )
+        `);
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS premium_orders (
+                id SERIAL PRIMARY KEY,
+                user_id INT REFERENCES users(id) ON DELETE SET NULL,
+                recipient_username VARCHAR(100),
+                plan_name VARCHAR(50),
+                ton_amount DECIMAL(10,4),
+                order_id VARCHAR(100) UNIQUE,
+                wallet_address VARCHAR(255),
+                status VARCHAR(20) DEFAULT 'pending',
+                tx_hash TEXT,
+                paid_at TIMESTAMP,
+                updated_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP
             )
         `);
         
@@ -548,13 +604,9 @@ app.get('/admin', (req, res) => {
     res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
-// Start Server
-app.listen(PORT, '0.0.0.0', async () => {
-    await connectDB();
-    
+// Initialize DB then start server
+connectDB().then(() => {
     console.log(`\n🚀 ============================================`);
-    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
-    console.log(`🚀 ============================================`);
     console.log(`🔒 SECURITY FEATURES ENABLED:`);
     console.log(`   ✓ Blockchain verification (real TON only)`);
     console.log(`   ✓ Anti-fake token protection`);
@@ -563,4 +615,14 @@ app.listen(PORT, '0.0.0.0', async () => {
     console.log(`   ✓ Sender verification`);
     console.log(`   ✓ Transaction age check`);
     console.log(`🚀 ============================================\n`);
+
+    // Only listen when running directly (not on Vercel)
+    if (process.env.VERCEL !== '1') {
+        app.listen(PORT, '0.0.0.0', () => {
+            console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+        });
+    }
 });
+
+// Export for Vercel serverless
+module.exports = app;

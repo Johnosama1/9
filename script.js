@@ -354,23 +354,11 @@ async function buyStars() {
     try {
         showNotification('🔄 جاري إنشاء الطلب...', 'warning');
         
-        const loginRes = await fetch(`${SERVER_URL}/api/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: username.replace('@', '') })
-        });
-        const loginData = await loginRes.json();
-        
-        if (!loginData.success) {
-            showNotification('❌ فشل في تسجيل الدخول', 'error');
-            return;
-        }
-        
         const orderRes = await fetch(`${SERVER_URL}/api/order/stars`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                user_id: loginData.data.user_id,
+                user_id: null,
                 recipient: username,
                 amount: amount,
                 ton_amount: tonAmount,
@@ -500,18 +488,11 @@ async function buyPremium() {
     try {
         showNotification('🔄 جاري إنشاء الطلب...', 'warning');
         
-        const loginRes = await fetch(`${SERVER_URL}/api/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: username.replace('@', '') })
-        });
-        const loginData = await loginRes.json();
-        
         const orderRes = await fetch(`${SERVER_URL}/api/order/premium`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                user_id: loginData.data.user_id,
+                user_id: null,
                 recipient: username,
                 plan: planName,
                 ton_amount: tonAmount,

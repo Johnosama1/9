@@ -362,7 +362,7 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/order/stars', async (req, res) => {
     const { user_id, recipient, amount, ton_amount, wallet_address } = req.body;
     
-    if (!user_id || !recipient || !amount || !ton_amount || !wallet_address) {
+    if (!recipient || !amount || !ton_amount || !wallet_address) {
         return sendResponse(res, false, 'بيانات غير مكتملة');
     }
     
@@ -394,7 +394,7 @@ app.post('/api/order/stars', async (req, res) => {
 app.post('/api/order/premium', async (req, res) => {
     const { user_id, recipient, plan, ton_amount, wallet_address } = req.body;
     
-    if (!user_id || !recipient || !plan || !ton_amount || !wallet_address) {
+    if (!recipient || !plan || !ton_amount || !wallet_address) {
         return sendResponse(res, false, 'بيانات غير مكتملة');
     }
     

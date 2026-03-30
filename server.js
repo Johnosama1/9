@@ -619,13 +619,8 @@ app.get('/admin', (req, res) => {
     res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
-// Export for Vercel serverless
-module.exports = app;
-
-// Start server when running directly (not on Vercel)
-if (!process.env.VERCEL) {
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log(`\n🚀 Server running on http://0.0.0.0:${PORT}`);
-        console.log(`🔒 Anti-fake protection enabled\n`);
-    });
-}
+// Start server
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n🚀 Server running on http://0.0.0.0:${PORT}`);
+    console.log(`🔒 Anti-fake protection enabled\n`);
+});

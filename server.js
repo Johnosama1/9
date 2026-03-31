@@ -49,12 +49,13 @@ function buildPoolConfig() {
 
     try {
         const parsed = new URL(url);
-        // SSL مطلوب فقط مع Supabase/Neon/sslmode=require
-        // قاعدة بيانات Replit الخارجية مش بتحتاج SSL
+        // SSL مطلوب مع Supabase/Neon أو على Vercel
+        // قاعدة بيانات Replit المحلية مش بتحتاج SSL
         const isExternal = (
             url.includes('neon.tech') ||
             url.includes('supabase') ||
-            url.includes('sslmode=require')
+            url.includes('sslmode=require') ||
+            process.env.VERCEL === '1'
         );
         return {
             host:     parsed.hostname,
@@ -674,8 +675,13 @@ app.get('/admin', (req, res) => {
     res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀 Server running on http://0.0.0.0:${PORT}`);
-    console.log(`🔒 Anti-fake protection enabled\n`);
-});
+// Export for Vercel serverless
+module.exports = app;
+
+// Start server only when running directly (Replit / local) — not on Vercel serverless
+if (!process.env.VERCEL) {
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`\n🚀 Server running on http://0.0.0.0:${PORT}`);
+        console.log(`🔒 Anti-fake protection enabled\n`);
+    });
+}

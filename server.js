@@ -1,599 +1,195 @@
 // ============================================
-// starGo - Secure Node.js Server (Anti-Fake Protection)
+// starGo - Node.js Server (all code in one file)
 // ============================================
 
 const express = require('express');
 const cors = require('cors');
-const { Pool } = require('pg');
-const axios = require('axios');
-const crypto = require('crypto');
-const path = require('path');
+const mysql = require('mysql2/promise');
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = 3000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Serve static files
-app.use(express.static(path.join(__dirname)));
-
-// ============================================
-// CONFIGURATION
-// ============================================
-
-const CONFIG = {
-    // محفظة استلام الدفعات (غيرها لعنوانك)
-    RECEIVER_WALLET: "UQBPpnRDUyTVXzJk4Qxr02z4iPFZfWv8NC2fvOjHe8UtmpHE",
-    
-    // TON Center API
-    TON_API_ENDPOINT: 'https://toncenter.com/api/v2',
-    TON_API_KEY: process.env.TON_API_KEY || '',
-    
-    // الحد الأدنى للتأكيدات (confirmations)
-    MIN_CONFIRMATIONS: 1,
-    
-    // المدة اللي الترانزاكشن لازم تكون خلالها (دقائق)
-    TX_MAX_AGE_MINUTES: 10
+// Database config
+const dbConfig = {
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    database: 'stargo_db'
 };
 
-// ============================================
-// Database (PostgreSQL)
-// ============================================
+let db;
 
-const isExternalDB = process.env.DATABASE_URL && (
-    process.env.DATABASE_URL.includes('neon.tech') ||
-    process.env.DATABASE_URL.includes('supabase') ||
-    process.env.DATABASE_URL.includes('sslmode=require') ||
-    process.env.VERCEL === '1'
-);
-
-// قاعدة بيانات خارجية (Supabase/Neon/Vercel) → connectionString مع SSL
-// قاعدة بيانات محلية (Replit) → pg يستخدم PGHOST/PGUSER/PGPASSWORD تلقائياً
-const pool = isExternalDB
-    ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
-    : new Pool();
-
-let dbInitialized = false;
-
+// Database connection
 async function connectDB() {
-    if (dbInitialized) return;
     try {
-        const client = await pool.connect();
+        db = await mysql.createConnection(dbConfig);
         console.log('✅ Database connected');
-
-        await client.query(`
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                telegram_username VARCHAR(100) UNIQUE NOT NULL,
-                wallet_address VARCHAR(255),
-                login_count INT DEFAULT 1,
-                first_login TIMESTAMP,
-                last_login TIMESTAMP,
-                wallet_connected_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
-
-        await client.query(`
-            CREATE TABLE IF NOT EXISTS stars_orders (
-                id SERIAL PRIMARY KEY,
-                user_id INT REFERENCES users(id) ON DELETE SET NULL,
-                recipient_username VARCHAR(100),
-                stars_amount INT,
-                ton_amount DECIMAL(10,4),
-                order_id VARCHAR(100) UNIQUE,
-                wallet_address VARCHAR(255),
-                status VARCHAR(20) DEFAULT 'pending',
-                tx_hash TEXT,
-                paid_at TIMESTAMP,
-                updated_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP
-            )
-        `);
-
-        await client.query(`
-            CREATE TABLE IF NOT EXISTS premium_orders (
-                id SERIAL PRIMARY KEY,
-                user_id INT REFERENCES users(id) ON DELETE SET NULL,
-                recipient_username VARCHAR(100),
-                plan_name VARCHAR(50),
-                ton_amount DECIMAL(10,4),
-                order_id VARCHAR(100) UNIQUE,
-                wallet_address VARCHAR(255),
-                status VARCHAR(20) DEFAULT 'pending',
-                tx_hash TEXT,
-                paid_at TIMESTAMP,
-                updated_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP
-            )
-        `);
-
-        await client.query(`
-            CREATE TABLE IF NOT EXISTS payment_verifications (
-                id SERIAL PRIMARY KEY,
-                order_id VARCHAR(50) NOT NULL,
-                tx_hash TEXT NOT NULL,
-                status VARCHAR(20) DEFAULT 'pending',
-                verification_data JSONB,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
-
-        await client.query(`CREATE INDEX IF NOT EXISTS idx_pv_order ON payment_verifications(order_id)`);
-        await client.query(`CREATE INDEX IF NOT EXISTS idx_pv_tx ON payment_verifications(tx_hash)`);
-
-        client.release();
-        dbInitialized = true;
     } catch (error) {
         console.error('❌ Database error:', error.message);
-        throw error;
     }
 }
+connectDB();
 
-// Middleware: ensure DB is ready before any API request
-app.use(async (req, res, next) => {
-    if (!dbInitialized) {
-        try {
-            await connectDB();
-        } catch (err) {
-            return res.status(500).json({ success: false, message: 'Database connection failed: ' + err.message });
-        }
-    }
-    next();
-});
-
-function sendResponse(res, success, message, data = null) {
+// Helper function
+function response(res, success, message, data = null) {
     res.json({ success, message, data });
-}
-
-// ============================================
-// TON BLOCKCHAIN VERIFICATION - التحقق الحقيقي
-// ============================================
-
-/**
- * جلب ترانزاكشن من الـ blockchain عن طريق الهاش
- */
-async function getTransactionFromBlockchain(txHashOrBoc) {
-    try {
-        const url = `${CONFIG.TON_API_ENDPOINT}/getTransactions`;
-        
-        const params = {
-            address: CONFIG.RECEIVER_WALLET,
-            limit: 20,
-            archival: true
-        };
-        
-        if (CONFIG.TON_API_KEY) {
-            params.api_key = CONFIG.TON_API_KEY;
-        }
-        
-        console.log(`🔍 Searching for tx in blockchain...`);
-        
-        const apiResponse = await axios.get(url, { params, timeout: 10000 });
-        
-        if (!apiResponse.data?.result || !Array.isArray(apiResponse.data.result)) {
-            return null;
-        }
-        
-        const tx = apiResponse.data.result.find(t => {
-            if (t.transaction_id?.hash === txHashOrBoc) return true;
-            if (t.in_msg?.body_hash === txHashOrBoc) return true;
-            if (txHashOrBoc && t.in_msg?.body_hash?.includes(txHashOrBoc.substring(0, 20))) return true;
-            return false;
-        });
-        
-        return tx || null;
-        
-    } catch (error) {
-        console.error('❌ Blockchain fetch error:', error.message);
-        return null;
-    }
-}
-
-/**
- * التحقق إن الترانزاكشن حقيقية ومش وهمية
- */
-async function verifyRealPayment(txDetails, expectedAmount, expectedSender) {
-    console.log('🔍 Verifying real payment...');
-    
-    if (!txDetails.in_msg) {
-        return { valid: false, error: 'لا توجد رسالة واردة في المعاملة' };
-    }
-    
-    const inMsg = txDetails.in_msg;
-    
-    if (inMsg.msg_data && inMsg.msg_data['@type'] === 'msg.dataRaw') {
-        const data = inMsg.msg_data.body || '';
-        if (data.includes('f8a7ea5') || data.includes('178d4519') || data.includes('jetton')) {
-            console.error('🚨 JETTON DETECTED - Possible fake token!');
-            return { 
-                valid: false, 
-                error: 'تم رفض العملية: يُسمح فقط بـ TON الأصلي (Native TON)، لا يُسمح بـ Jetton أو عملات مزيفة',
-                details: { type: 'jetton_detected' }
-            };
-        }
-    }
-    
-    const amountNano = parseInt(inMsg.value || 0);
-    if (amountNano === 0) {
-        return { 
-            valid: false, 
-            error: 'المبلغ صفر - قد تكون عملة وهمية',
-            details: { type: 'zero_amount' }
-        };
-    }
-    
-    const expectedNano = Math.floor(parseFloat(expectedAmount) * 1e9);
-    const minAcceptable = expectedNano * 0.99;
-    
-    if (amountNano < minAcceptable) {
-        return { 
-            valid: false, 
-            error: `المبلغ غير كافي: ${(amountNano/1e9).toFixed(4)} TON بدلاً من ${expectedAmount} TON`,
-            details: { 
-                received: amountNano,
-                expected: expectedNano,
-                type: 'insufficient_amount'
-            }
-        };
-    }
-    
-    if (inMsg.destination !== CONFIG.RECEIVER_WALLET) {
-        return { 
-            valid: false, 
-            error: 'المعاملة لم ترسل للمحفظة الصحيحة',
-            details: { 
-                expected: CONFIG.RECEIVER_WALLET,
-                received: inMsg.destination,
-                type: 'wrong_destination'
-            }
-        };
-    }
-    
-    if (inMsg.source !== expectedSender) {
-        return { 
-            valid: false, 
-            error: 'عنوان المرسل لا يتطابق',
-            details: { 
-                expected: expectedSender,
-                received: inMsg.source,
-                type: 'wrong_sender'
-            }
-        };
-    }
-    
-    
-    const txTime = txDetails.utime * 1000;
-    const now = Date.now();
-    const ageMinutes = (now - txTime) / 60000;
-    
-    if (ageMinutes > CONFIG.TX_MAX_AGE_MINUTES) {
-        return { 
-            valid: false, 
-            error: 'المعاملة قديمة جداً',
-            details: { age: ageMinutes, type: 'too_old' }
-        };
-    }
-    
-    if (txDetails.out_msgs && txDetails.out_msgs.length > 0) {
-        for (const outMsg of txDetails.out_msgs) {
-            if (outMsg.destination === inMsg.source && parseInt(outMsg.value) > 0) {
-                return { 
-                    valid: false, 
-                    error: 'المعاملة تم رفضها (bounce)',
-                    details: { type: 'bounce' }
-                };
-            }
-        }
-    }
-    
-    console.log('✅ Real TON payment verified!');
-    
-    return {
-        valid: true,
-        amount: amountNano,
-        sender: inMsg.source,
-        timestamp: txDetails.utime,
-        tx_hash: txDetails.transaction_id?.hash
-    };
-}
-
-/**
- * التحقق من عدم تكرار استخدام نفس الترانزاكشن
- */
-async function isTxAlreadyUsed(txHash) {
-    try {
-        const result = await pool.query(
-            'SELECT id FROM payment_verifications WHERE tx_hash = $1 AND status = $2',
-            [txHash, 'confirmed']
-        );
-        return result.rows.length > 0;
-    } catch (error) {
-        console.error('Error checking tx reuse:', error);
-        return false;
-    }
 }
 
 // ============================================
 // API Routes
 // ============================================
 
-// Health Check
-app.get('/api/health', (req, res) => {
-    sendResponse(res, true, 'Server running with blockchain verification');
-});
-
-// Get Price
+// 1. Get TON Price
 app.get('/api/price', async (req, res) => {
     try {
-        const priceRes = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=toncoin&vs_currencies=usd', { timeout: 5000 });
-        sendResponse(res, true, 'Price fetched', { price: priceRes.data.toncoin.usd });
+        const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=toncoin&vs_currencies=usd');
+        const data = await response.json();
+        response(res, true, 'Price fetched', { price: data.toncoin.usd });
     } catch (error) {
-        sendResponse(res, true, 'Using fallback', { price: 5.5 });
+        response(res, true, 'Using fallback price', { price: 5.5 });
     }
 });
 
-// Login
+// 2. Connect Wallet
+app.post('/api/wallet', async (req, res) => {
+    const { wallet_address, user_id } = req.body;
+    
+    if (!wallet_address) {
+        return response(res, false, 'عنوان المحفظة مطلوب');
+    }
+    
+    try {
+        if (user_id) {
+            await db.execute('UPDATE users SET wallet_address = ?, wallet_connected_at = NOW() WHERE id = ?', [wallet_address, user_id]);
+        }
+        response(res, true, 'تم ربط المحفظة');
+    } catch (error) {
+        response(res, false, 'خطأ في الحفظ');
+    }
+});
+
+// 3. Login / Save User
 app.post('/api/login', async (req, res) => {
     const { username } = req.body;
-    const cleanUsername = username?.toString().replace('@', '').trim();
+    const cleanUsername = username?.replace('@', '');
     
-    if (!cleanUsername || cleanUsername.length < 3) {
-        return sendResponse(res, false, 'اسم المستخدم غير صالح');
+    if (!cleanUsername) {
+        return response(res, false, 'اسم المستخدم مطلوب');
     }
     
     try {
-        const existing = await pool.query('SELECT id FROM users WHERE telegram_username = $1', [cleanUsername]);
+        const [users] = await db.execute('SELECT id FROM users WHERE telegram_username = ?', [cleanUsername]);
         
-        if (existing.rows.length > 0) {
-            await pool.query('UPDATE users SET last_login = NOW(), login_count = login_count + 1 WHERE id = $1', [existing.rows[0].id]);
-            sendResponse(res, true, 'تم تسجيل الدخول', { user_id: existing.rows[0].id, username: '@' + cleanUsername });
+        if (users.length > 0) {
+            await db.execute('UPDATE users SET last_login = NOW(), login_count = login_count + 1 WHERE id = ?', [users[0].id]);
+            response(res, true, 'تم تسجيل الدخول', { user_id: users[0].id, username: '@' + cleanUsername });
         } else {
-            const result = await pool.query(
-                'INSERT INTO users (telegram_username, first_login, last_login) VALUES ($1, NOW(), NOW()) RETURNING id',
-                [cleanUsername]
-            );
-            sendResponse(res, true, 'تم إنشاء حساب', { user_id: result.rows[0].id, username: '@' + cleanUsername });
+            const [result] = await db.execute('INSERT INTO users (telegram_username, first_login, last_login) VALUES (?, NOW(), NOW())', [cleanUsername]);
+            response(res, true, 'تم إنشاء حساب', { user_id: result.insertId, username: '@' + cleanUsername });
         }
     } catch (error) {
-        console.error('Login error:', error);
-        sendResponse(res, false, 'خطأ في قاعدة البيانات');
+        response(res, false, 'خطأ في قاعدة البيانات');
     }
 });
 
-// Create Stars Order
+// 4. Create Order (Stars)
 app.post('/api/order/stars', async (req, res) => {
-    const { user_id, recipient, amount, ton_amount, wallet_address } = req.body;
+    const { user_id, recipient, amount, ton_amount } = req.body;
+    const orderId = 'STAR_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
     
-    if (!recipient || !amount || !ton_amount || !wallet_address) {
-        return sendResponse(res, false, 'بيانات غير مكتملة');
+    if (!user_id || !recipient || !amount) {
+        return response(res, false, 'بيانات غير مكتملة');
     }
-    
-    if (parseInt(amount) < 50) {
-        return sendResponse(res, false, 'الحد الأدنى 50 نجمة');
-    }
-    
-    const tonAddressRegex = /^((EQ|UQ)[a-zA-Z0-9_-]{46}|(-?[0-9]+):[0-9a-fA-F]{64})$/;
-    if (!tonAddressRegex.test(wallet_address)) {
-        return sendResponse(res, false, 'عنوان المحفظة غير صالح');
-    }
-    
-    const orderId = 'STAR-' + Date.now() + '-' + crypto.randomBytes(4).toString('hex').toUpperCase();
     
     try {
-        await pool.query(
-            'INSERT INTO stars_orders (order_id, user_id, recipient_username, stars_amount, ton_amount, wallet_address, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())',
-            [orderId, user_id, recipient, amount, ton_amount, wallet_address, 'pending']
+        await db.execute(
+            'INSERT INTO stars_orders (user_id, recipient_username, stars_amount, ton_amount, order_id, status) VALUES (?, ?, ?, ?, ?, "pending")',
+            [user_id, recipient, amount, ton_amount, orderId]
         );
-        
-        sendResponse(res, true, 'تم إنشاء الطلب', { order_id: orderId });
+        response(res, true, 'تم إنشاء الطلب', { order_id: orderId });
     } catch (error) {
-        console.error('Order creation error:', error);
-        sendResponse(res, false, 'خطأ في إنشاء الطلب');
+        response(res, false, 'خطأ في إنشاء الطلب');
     }
 });
 
-// Create Premium Order
+// 5. Create Order (Premium)
 app.post('/api/order/premium', async (req, res) => {
-    const { user_id, recipient, plan, ton_amount, wallet_address } = req.body;
+    const { user_id, recipient, plan, ton_amount } = req.body;
+    const orderId = 'PRM_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
     
-    if (!recipient || !plan || !ton_amount || !wallet_address) {
-        return sendResponse(res, false, 'بيانات غير مكتملة');
+    if (!user_id || !recipient || !plan) {
+        return response(res, false, 'بيانات غير مكتملة');
     }
-    
-    const tonAddressRegex = /^((EQ|UQ)[a-zA-Z0-9_-]{46}|(-?[0-9]+):[0-9a-fA-F]{64})$/;
-    if (!tonAddressRegex.test(wallet_address)) {
-        return sendResponse(res, false, 'عنوان المحفظة غير صالح');
-    }
-    
-    const orderId = 'PRM-' + Date.now() + '-' + crypto.randomBytes(4).toString('hex').toUpperCase();
     
     try {
-        await pool.query(
-            'INSERT INTO premium_orders (order_id, user_id, recipient_username, plan_name, ton_amount, wallet_address, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())',
-            [orderId, user_id, recipient, plan, ton_amount, wallet_address, 'pending']
+        await db.execute(
+            'INSERT INTO premium_orders (user_id, recipient_username, plan_name, ton_amount, order_id, status) VALUES (?, ?, ?, ?, ?, "pending")',
+            [user_id, recipient, plan, ton_amount, orderId]
         );
-        
-        sendResponse(res, true, 'تم إنشاء الطلب', { order_id: orderId });
+        response(res, true, 'تم إنشاء الطلب', { order_id: orderId });
     } catch (error) {
-        console.error('Order creation error:', error);
-        sendResponse(res, false, 'خطأ في إنشاء الطلب');
+        response(res, false, 'خطأ في إنشاء الطلب');
     }
 });
 
-// 🔒 VERIFY PAYMENT - التحقق النهائي من البلوكتشين
-app.post('/api/verify-payment', async (req, res) => {
-    const { order_id, tx_hash, wallet_address, order_type } = req.body;
-    
-    if (!order_id || !tx_hash || !wallet_address) {
-        return sendResponse(res, false, 'بيانات التحقق غير مكتملة');
-    }
-    
-    console.log(`\n🔒 ============================================`);
-    console.log(`🔒 Payment verification started`);
-    console.log(`🔒 Order: ${order_id}`);
-    console.log(`🔒 TX Hash: ${tx_hash}`);
-    console.log(`🔒 Wallet: ${wallet_address}`);
-    console.log(`🔒 ============================================\n`);
-    
-    try {
-        const table = order_type === 'stars' ? 'stars_orders' : 'premium_orders';
-        const orderResult = await pool.query(`SELECT * FROM ${table} WHERE order_id = $1`, [order_id]);
-        
-        if (orderResult.rows.length === 0) {
-            return sendResponse(res, false, 'الطلب غير موجود');
-        }
-        
-        const order = orderResult.rows[0];
-        
-        console.log('🔍 Step 1: Searching blockchain...');
-        const txDetails = await getTransactionFromBlockchain(tx_hash);
-        
-        if (!txDetails) {
-            console.error('❌ Transaction not found on blockchain');
-            await pool.query(
-                'INSERT INTO payment_verifications (order_id, tx_hash, status, verification_data) VALUES ($1, $2, $3, $4)',
-                [order_id, tx_hash, 'rejected', JSON.stringify({ error: 'Not found on blockchain' })]
-            );
-            return sendResponse(res, false, 'المعاملة غير موجودة على البلوكتشين - تأكد من إتمام الدفع');
-        }
-        
-        const alreadyUsed = await isTxAlreadyUsed(tx_hash);
-        if (alreadyUsed) {
-            await pool.query(
-                'INSERT INTO payment_verifications (order_id, tx_hash, status, verification_data) VALUES ($1, $2, $3, $4)',
-                [order_id, tx_hash, 'rejected', JSON.stringify({ error: 'Transaction already used' })]
-            );
-            return sendResponse(res, false, 'هذه المعاملة تم استخدامها من قبل');
-        }
-        
-        console.log('✅ Transaction found on blockchain');
-        
-        console.log('🔍 Step 2: Verifying payment details...');
-        const verification = await verifyRealPayment(txDetails, order.ton_amount, wallet_address);
-        
-        await pool.query(
-            'INSERT INTO payment_verifications (order_id, tx_hash, status, verification_data) VALUES ($1, $2, $3, $4)',
-            [
-                order_id, 
-                tx_hash, 
-                verification.valid ? 'confirmed' : 'rejected',
-                JSON.stringify(verification)
-            ]
-        );
-        
-        if (!verification.valid) {
-            console.error(`🚨 PAYMENT REJECTED: ${verification.error}`);
-            await pool.query(`UPDATE ${table} SET status = 'failed', tx_hash = $1, updated_at = NOW() WHERE order_id = $2`, [tx_hash, order_id]);
-            return sendResponse(res, false, verification.error, {
-                verified: false,
-                details: verification.details
-            });
-        }
-        
-        console.log('✅ ✅ ✅ PAYMENT VERIFIED SUCCESSFULLY!');
-        console.log(`✅ Amount: ${(verification.amount/1e9).toFixed(4)} TON`);
-        console.log(`✅ Sender: ${verification.sender}`);
-        console.log(`✅ Time: ${new Date(verification.timestamp * 1000).toISOString()}`);
-        
-        await pool.query(
-            `UPDATE ${table} SET status = 'paid', tx_hash = $1, paid_at = NOW(), updated_at = NOW() WHERE order_id = $2`,
-            [tx_hash, order_id]
-        );
-        
-        sendResponse(res, true, 'تم التحقق من الدفع بنجاح - العملية حقيقية', {
-            verified: true,
-            amount_ton: (verification.amount / 1e9).toFixed(4),
-            tx_hash: verification.tx_hash,
-            timestamp: verification.timestamp
-        });
-        
-    } catch (error) {
-        console.error('❌ Verification error:', error);
-        sendResponse(res, false, 'خطأ في التحقق من الدفع: ' + error.message);
-    }
-});
-
-// Update Order Status
+// 6. Update Order Status
 app.put('/api/order/:orderId', async (req, res) => {
     const { orderId } = req.params;
     const { status } = req.body;
     
-    const validStatuses = ['pending', 'paid', 'failed', 'processing', 'completed', 'cancelled'];
-    if (!validStatuses.includes(status)) {
-        return sendResponse(res, false, 'حالة غير صالحة');
-    }
-    
     try {
-        let result = await pool.query(
-            'UPDATE stars_orders SET status = $1, updated_at = NOW() WHERE order_id = $2',
-            [status, orderId]
-        );
+        let [result] = await db.execute('UPDATE stars_orders SET status = ?, completed_at = NOW() WHERE order_id = ?', [status, orderId]);
         
-        if (result.rowCount === 0) {
-            result = await pool.query(
-                'UPDATE premium_orders SET status = $1, updated_at = NOW() WHERE order_id = $2',
-                [status, orderId]
-            );
+        if (result.affectedRows === 0) {
+            [result] = await db.execute('UPDATE premium_orders SET status = ?, completed_at = NOW() WHERE order_id = ?', [status, orderId]);
         }
         
-        if (result.rowCount === 0) {
-            return sendResponse(res, false, 'الطلب غير موجود');
-        }
-        
-        sendResponse(res, true, 'تم تحديث الحالة');
+        response(res, true, 'تم تحديث الحالة');
     } catch (error) {
-        console.error('Update error:', error);
-        sendResponse(res, false, 'خطأ في التحديث');
+        response(res, false, 'خطأ في التحديث');
     }
 });
 
-// Get User Orders
+// 7. Get User Orders
 app.get('/api/orders/:userId', async (req, res) => {
     const { userId } = req.params;
     
     try {
-        const starsResult = await pool.query(
-            'SELECT order_id, stars_amount, status, created_at, paid_at FROM stars_orders WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20',
-            [userId]
-        );
+        const [stars] = await db.execute('SELECT order_id, stars_amount, status, created_at FROM stars_orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 20', [userId]);
+        const [premium] = await db.execute('SELECT order_id, plan_name, status, created_at FROM premium_orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 20', [userId]);
         
-        const premiumResult = await pool.query(
-            'SELECT order_id, plan_name, status, created_at, paid_at FROM premium_orders WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20',
-            [userId]
-        );
-        
-        sendResponse(res, true, 'تم جلب الطلبات', { stars: starsResult.rows, premium: premiumResult.rows });
+        response(res, true, 'تم جلب الطلبات', { stars, premium });
     } catch (error) {
-        sendResponse(res, false, 'خطأ في جلب الطلبات');
+        response(res, false, 'خطأ في جلب الطلبات');
     }
 });
 
-// Admin Routes
+// 8. Get Statistics
 app.get('/api/stats', async (req, res) => {
     try {
-        const totalUsers = await pool.query('SELECT COUNT(*) as total FROM users');
-        const pendingStars = await pool.query('SELECT COUNT(*) as total FROM stars_orders WHERE status = $1', ['pending']);
-        const pendingPremium = await pool.query('SELECT COUNT(*) as total FROM premium_orders WHERE status = $1', ['pending']);
-        const paidToday = await pool.query('SELECT COUNT(*) as total FROM stars_orders WHERE status = $1 AND DATE(paid_at) = CURRENT_DATE', ['paid']);
+        const [totalUsers] = await db.execute('SELECT COUNT(*) as total FROM users');
+        const [pendingStars] = await db.execute('SELECT COUNT(*) as total FROM stars_orders WHERE status = "pending"');
+        const [pendingPremium] = await db.execute('SELECT COUNT(*) as total FROM premium_orders WHERE status = "pending"');
+        const [todayOrders] = await db.execute('SELECT COUNT(*) as total FROM stars_orders WHERE DATE(created_at) = CURDATE()');
         
-        sendResponse(res, true, 'تم جلب الإحصائيات', {
-            total_users: totalUsers.rows[0].total,
-            pending_stars: pendingStars.rows[0].total,
-            pending_premium: pendingPremium.rows[0].total,
-            paid_today: paidToday.rows[0].total
+        response(res, true, 'تم جلب الإحصائيات', {
+            total_users: totalUsers[0].total,
+            pending_stars: pendingStars[0].total,
+            pending_premium: pendingPremium[0].total,
+            today_orders: todayOrders[0].total
         });
     } catch (error) {
-        sendResponse(res, false, 'خطأ في جلب الإحصائيات');
+        response(res, false, 'خطأ في جلب الإحصائيات');
     }
 });
 
+// 9. Get All Orders (Admin)
 app.get('/api/admin/orders', async (req, res) => {
     try {
-        const starsResult = await pool.query(`
+        const [stars] = await db.execute(`
             SELECT so.*, u.telegram_username 
             FROM stars_orders so 
             LEFT JOIN users u ON so.user_id = u.id 
@@ -601,7 +197,7 @@ app.get('/api/admin/orders', async (req, res) => {
             LIMIT 100
         `);
         
-        const premiumResult = await pool.query(`
+        const [premium] = await db.execute(`
             SELECT po.*, u.telegram_username 
             FROM premium_orders po 
             LEFT JOIN users u ON po.user_id = u.id 
@@ -609,29 +205,39 @@ app.get('/api/admin/orders', async (req, res) => {
             LIMIT 100
         `);
         
-        sendResponse(res, true, 'تم جلب الطلبات', { stars: starsResult.rows, premium: premiumResult.rows });
+        response(res, true, 'تم جلب الطلبات', { stars, premium });
     } catch (error) {
-        sendResponse(res, false, 'خطأ في جلب الطلبات');
+        response(res, false, 'خطأ في جلب الطلبات');
     }
 });
 
-// Serve index.html for root
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+// 10. Get All Users (Admin)
+app.get('/api/admin/users', async (req, res) => {
+    try {
+        const [users] = await db.execute('SELECT id, telegram_username, wallet_address, login_count, last_login, created_at FROM users ORDER BY created_at DESC LIMIT 100');
+        response(res, true, 'تم جلب المستخدمين', users);
+    } catch (error) {
+        response(res, false, 'خطأ في جلب المستخدمين');
+    }
 });
 
-// Serve admin.html
-app.get('/admin', (req, res) => {
-    res.sendFile(path.join(__dirname, 'admin.html'));
+// 11. Health Check
+app.get('/api/health', (req, res) => {
+    response(res, true, 'Server is running');
 });
 
-// Export for Vercel serverless
-module.exports = app;
-
-// Start server only when running directly (Replit / local) — not on Vercel serverless
-if (!process.env.VERCEL) {
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log(`\n🚀 Server running on http://0.0.0.0:${PORT}`);
-        console.log(`🔒 Anti-fake protection enabled\n`);
-    });
-}
+// Start server
+app.listen(PORT, () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    console.log(`📡 API endpoints:`);
+    console.log(`   GET  /api/price`);
+    console.log(`   POST /api/login`);
+    console.log(`   POST /api/wallet`);
+    console.log(`   POST /api/order/stars`);
+    console.log(`   POST /api/order/premium`);
+    console.log(`   PUT  /api/order/:orderId`);
+    console.log(`   GET  /api/orders/:userId`);
+    console.log(`   GET  /api/stats`);
+    console.log(`   GET  /api/admin/orders`);
+    console.log(`   GET  /api/admin/users`);
+});

@@ -41,17 +41,39 @@ const CONFIG = {
 // Database (PostgreSQL)
 // ============================================
 
-const isExternalDB = process.env.DATABASE_URL && (
-    process.env.DATABASE_URL.includes('neon.tech') ||
-    process.env.DATABASE_URL.includes('supabase') ||
-    process.env.DATABASE_URL.includes('sslmode=require') ||
-    process.env.VERCEL === '1'
-);
+// نحلل DATABASE_URL يدوياً عشان نتجاهل PGHOST/PGPORT تبع Replit
+// ومنخليش مكتبة pg تاخد localhost من الـ environment تلقائياً
+function buildPoolConfig() {
+    const url = process.env.DATABASE_URL;
+    if (!url) throw new Error('DATABASE_URL is not set');
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: isExternalDB ? { rejectUnauthorized: false } : false
-});
+    try {
+        const parsed = new URL(url);
+        // SSL مطلوب فقط مع Supabase/Neon/sslmode=require
+        // قاعدة بيانات Replit الخارجية مش بتحتاج SSL
+        const isExternal = (
+            url.includes('neon.tech') ||
+            url.includes('supabase') ||
+            url.includes('sslmode=require')
+        );
+        return {
+            host:     parsed.hostname,
+            port:     parseInt(parsed.port || '5432'),
+            user:     decodeURIComponent(parsed.username),
+            password: decodeURIComponent(parsed.password),
+            database: parsed.pathname.replace(/^\//, ''),
+            ssl:      isExternal ? { rejectUnauthorized: false } : false,
+        };
+    } catch {
+        // fallback إذا الـ URL مش standard
+        return {
+            connectionString: url,
+            ssl: { rejectUnauthorized: false },
+        };
+    }
+}
+
+const pool = new Pool(buildPoolConfig());
 
 let dbInitialized = false;
 

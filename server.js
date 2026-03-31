@@ -48,10 +48,11 @@ const isExternalDB = process.env.DATABASE_URL && (
     process.env.VERCEL === '1'
 );
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: isExternalDB ? { rejectUnauthorized: false } : false
-});
+// قاعدة بيانات خارجية (Supabase/Neon/Vercel) → connectionString مع SSL
+// قاعدة بيانات محلية (Replit) → pg يستخدم PGHOST/PGUSER/PGPASSWORD تلقائياً
+const pool = isExternalDB
+    ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+    : new Pool();
 
 let dbInitialized = false;
 

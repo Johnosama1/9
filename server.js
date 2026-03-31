@@ -34,47 +34,24 @@ const CONFIG = {
     MIN_CONFIRMATIONS: 1,
     
     // المدة اللي الترانزاكشن لازم تكون خلالها (دقائق)
-    TX_MAX_AGE_MINUTES: 30
+    TX_MAX_AGE_MINUTES: 10
 };
 
 // ============================================
 // Database (PostgreSQL)
 // ============================================
 
-// نحلل DATABASE_URL يدوياً عشان نتجاهل PGHOST/PGPORT تبع Replit
-// ومنخليش مكتبة pg تاخد localhost من الـ environment تلقائياً
-function buildPoolConfig() {
-    const url = process.env.DATABASE_URL;
-    if (!url) throw new Error('DATABASE_URL is not set');
+const isExternalDB = process.env.DATABASE_URL && (
+    process.env.DATABASE_URL.includes('neon.tech') ||
+    process.env.DATABASE_URL.includes('supabase') ||
+    process.env.DATABASE_URL.includes('sslmode=require') ||
+    process.env.VERCEL === '1'
+);
 
-    try {
-        const parsed = new URL(url);
-        // SSL مطلوب مع Supabase/Neon أو على Vercel
-        // قاعدة بيانات Replit المحلية مش بتحتاج SSL
-        const isExternal = (
-            url.includes('neon.tech') ||
-            url.includes('supabase') ||
-            url.includes('sslmode=require') ||
-            process.env.VERCEL === '1'
-        );
-        return {
-            host:     parsed.hostname,
-            port:     parseInt(parsed.port || '5432'),
-            user:     decodeURIComponent(parsed.username),
-            password: decodeURIComponent(parsed.password),
-            database: parsed.pathname.replace(/^\//, ''),
-            ssl:      isExternal ? { rejectUnauthorized: false } : false,
-        };
-    } catch {
-        // fallback إذا الـ URL مش standard
-        return {
-            connectionString: url,
-            ssl: { rejectUnauthorized: false },
-        };
-    }
-}
-
-const pool = new Pool(buildPoolConfig());
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: isExternalDB ? { rejectUnauthorized: false } : false
+});
 
 let dbInitialized = false;
 
@@ -176,24 +153,15 @@ function sendResponse(res, success, message, data = null) {
 // ============================================
 
 /**
- * تطبيع عنوان TON للمقارنة (يحول من raw إلى شكل موحد)
+ * جلب ترانزاكشن من الـ blockchain عن طريق الهاش
  */
-function normalizeTonAddress(addr) {
-    if (!addr) return '';
-    return addr.toLowerCase().replace(/^(eq|uq)/i, '');
-}
-
-/**
- * البحث عن ترانزاكشن حقيقية عبر المرسل + المبلغ + الوقت
- * (البوك BOC ليس هاش، لذا نبحث بالعنوان والمبلغ)
- */
-async function getTransactionFromBlockchain(bocOrHash, expectedSender, expectedAmount) {
+async function getTransactionFromBlockchain(txHashOrBoc) {
     try {
         const url = `${CONFIG.TON_API_ENDPOINT}/getTransactions`;
         
         const params = {
             address: CONFIG.RECEIVER_WALLET,
-            limit: 50,
+            limit: 20,
             archival: true
         };
         
@@ -201,44 +169,19 @@ async function getTransactionFromBlockchain(bocOrHash, expectedSender, expectedA
             params.api_key = CONFIG.TON_API_KEY;
         }
         
-        console.log(`🔍 Searching for tx in blockchain by sender+amount...`);
+        console.log(`🔍 Searching for tx in blockchain...`);
         
         const apiResponse = await axios.get(url, { params, timeout: 10000 });
         
         if (!apiResponse.data?.result || !Array.isArray(apiResponse.data.result)) {
             return null;
         }
-
-        const expectedNano = Math.floor(parseFloat(expectedAmount) * 1e9);
-        const minAcceptable = expectedNano * 0.99;
-        const now = Date.now() / 1000;
-        const maxAgeSeconds = CONFIG.TX_MAX_AGE_MINUTES * 60;
-        const normalizedSender = normalizeTonAddress(expectedSender);
-
-        const txs = apiResponse.data.result;
-        console.log(`📦 Got ${txs.length} transactions from blockchain`);
-
-        const tx = txs.find(t => {
-            if (!t.in_msg || !t.in_msg.source) return false;
-
-            // تحقق من المرسل (مع تطبيع الصيغة)
-            const txSender = normalizeTonAddress(t.in_msg.source);
-            if (txSender !== normalizedSender) return false;
-
-            // تحقق من المبلغ
-            const amountNano = parseInt(t.in_msg.value || 0);
-            if (amountNano < minAcceptable) return false;
-
-            // تحقق من الوقت
-            const ageSeconds = now - (t.utime || 0);
-            if (ageSeconds > maxAgeSeconds || ageSeconds < 0) return false;
-
-            // ملاحظة: لا نتحقق من الوجهة هنا لأن TonCenter يرجع الصيغة الخام
-            // بينما RECEIVER_WALLET بالصيغة الودودة — وكلا الصيغتين لنفس المحفظة
-            // والـ API نفسه فلتر الترانزاكشنات للمحفظة دي
-
-            console.log(`✅ Match found: sender=${t.in_msg.source} amount=${amountNano} age=${Math.floor(ageSeconds)}s`);
-            return true;
+        
+        const tx = apiResponse.data.result.find(t => {
+            if (t.transaction_id?.hash === txHashOrBoc) return true;
+            if (t.in_msg?.body_hash === txHashOrBoc) return true;
+            if (txHashOrBoc && t.in_msg?.body_hash?.includes(txHashOrBoc.substring(0, 20))) return true;
+            return false;
         });
         
         return tx || null;
@@ -297,7 +240,19 @@ async function verifyRealPayment(txDetails, expectedAmount, expectedSender) {
         };
     }
     
-    if (normalizeTonAddress(inMsg.source) !== normalizeTonAddress(expectedSender)) {
+    if (inMsg.destination !== CONFIG.RECEIVER_WALLET) {
+        return { 
+            valid: false, 
+            error: 'المعاملة لم ترسل للمحفظة الصحيحة',
+            details: { 
+                expected: CONFIG.RECEIVER_WALLET,
+                received: inMsg.destination,
+                type: 'wrong_destination'
+            }
+        };
+    }
+    
+    if (inMsg.source !== expectedSender) {
         return { 
             valid: false, 
             error: 'عنوان المرسل لا يتطابق',
@@ -309,8 +264,6 @@ async function verifyRealPayment(txDetails, expectedAmount, expectedSender) {
         };
     }
     
-    // الترانزاكشن اتجابت من API بالبحث بعنوان محفظة الاستقبال مباشرةً
-    // فمضمون إنها وصلت للمحفظة الصح، مش محتاجين نتحقق تاني
     
     const txTime = txDetails.utime * 1000;
     const now = Date.now();
@@ -496,8 +449,7 @@ app.post('/api/verify-payment', async (req, res) => {
         const order = orderResult.rows[0];
         
         console.log('🔍 Step 1: Searching blockchain...');
-        // نبحث بالمرسل + المبلغ + الوقت لأن الـ BOC ليس هاش ترانزاكشن
-        const txDetails = await getTransactionFromBlockchain(tx_hash, wallet_address, order.ton_amount);
+        const txDetails = await getTransactionFromBlockchain(tx_hash);
         
         if (!txDetails) {
             console.error('❌ Transaction not found on blockchain');
@@ -508,14 +460,11 @@ app.post('/api/verify-payment', async (req, res) => {
             return sendResponse(res, false, 'المعاملة غير موجودة على البلوكتشين - تأكد من إتمام الدفع');
         }
         
-        // نستخدم الهاش الحقيقي من البلوكتشين (مش الـ BOC) للتحقق من التكرار
-        const realTxHash = txDetails.transaction_id?.hash || tx_hash;
-        
-        const alreadyUsed = await isTxAlreadyUsed(realTxHash);
+        const alreadyUsed = await isTxAlreadyUsed(tx_hash);
         if (alreadyUsed) {
             await pool.query(
                 'INSERT INTO payment_verifications (order_id, tx_hash, status, verification_data) VALUES ($1, $2, $3, $4)',
-                [order_id, realTxHash, 'rejected', JSON.stringify({ error: 'Transaction already used' })]
+                [order_id, tx_hash, 'rejected', JSON.stringify({ error: 'Transaction already used' })]
             );
             return sendResponse(res, false, 'هذه المعاملة تم استخدامها من قبل');
         }
@@ -529,7 +478,7 @@ app.post('/api/verify-payment', async (req, res) => {
             'INSERT INTO payment_verifications (order_id, tx_hash, status, verification_data) VALUES ($1, $2, $3, $4)',
             [
                 order_id, 
-                realTxHash, 
+                tx_hash, 
                 verification.valid ? 'confirmed' : 'rejected',
                 JSON.stringify(verification)
             ]
@@ -537,7 +486,7 @@ app.post('/api/verify-payment', async (req, res) => {
         
         if (!verification.valid) {
             console.error(`🚨 PAYMENT REJECTED: ${verification.error}`);
-            await pool.query(`UPDATE ${table} SET status = 'failed', tx_hash = $1, updated_at = NOW() WHERE order_id = $2`, [realTxHash, order_id]);
+            await pool.query(`UPDATE ${table} SET status = 'failed', tx_hash = $1, updated_at = NOW() WHERE order_id = $2`, [tx_hash, order_id]);
             return sendResponse(res, false, verification.error, {
                 verified: false,
                 details: verification.details

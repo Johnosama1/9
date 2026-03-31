@@ -41,11 +41,14 @@ const CONFIG = {
 // Database (PostgreSQL)
 // ============================================
 
+// نكتشف تلقائياً لو قاعدة البيانات خارجية أو محلية
+const pgHost = process.env.PGHOST || '';
 const isExternalDB = process.env.DATABASE_URL && (
     process.env.DATABASE_URL.includes('neon.tech') ||
     process.env.DATABASE_URL.includes('supabase') ||
     process.env.DATABASE_URL.includes('sslmode=require') ||
-    process.env.VERCEL === '1'
+    process.env.VERCEL === '1' ||
+    (pgHost !== '' && pgHost !== 'localhost' && pgHost !== '127.0.0.1')
 );
 
 const pool = new Pool({

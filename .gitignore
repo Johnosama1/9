@@ -11,5 +11,13 @@ attached_assets/
 .replit
 replit.nix
 .local/
+<<<<<<< HEAD
+<<<<<<< HEAD
 push.js
 push.sh
+=======
+>>>>>>> 7b7ed28 (Add a script to automatically commit and push code changes)
+=======
+push.js
+push.sh
+>>>>>>> d9e476a (Update project to use a script for pushing changes to GitHub)
